@@ -53,3 +53,18 @@ button:disabled {
   letter-spacing: 0.04em;
   color: #9aa;
 }
+
+.hint {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.85rem;
+  border-left: 3px solid #6a7a8a;
+  background: #1a1d22;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #b8c0c8;
+}
+
+.hint strong {
+  color: #eaeaea;
+}

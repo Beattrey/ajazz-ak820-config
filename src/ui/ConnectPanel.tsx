@@ -30,6 +30,14 @@ export function ConnectPanel({ controller }: { controller: DeviceController }) {
     <section className="panel">
       <h2>Device</h2>
       <p>Status: {connected ? "Connected" : "Not connected"}</p>
+      {!connected && (
+        <p className="hint">
+          Connect the keyboard via <strong>USB-C cable</strong> and set the
+          mode switch to <strong>wired</strong>. The TFT configuration
+          interface is not exposed over Bluetooth or the 2.4&nbsp;GHz dongle —
+          time sync and image upload will not work in those modes.
+        </p>
+      )}
       <button onClick={onClick} disabled={busy}>
         {connected ? "Disconnect" : "Connect keyboard"}
       </button>
