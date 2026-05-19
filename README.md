@@ -2,6 +2,8 @@
 
 A browser-based tool to configure the AJAZZ AK820 Pro mechanical keyboard. Syncs system time and uploads static or animated images to the keyboard's 128×128 TFT screen via WebHID — no native install required.
 
+**Live:** <https://beattrey.github.io/ajazz-ak820-config/>
+
 ## Requirements
 
 - **Browser**: Chrome / Edge / Opera / Arc (any Chromium ≥ 89). Safari and Firefox are not supported — they do not implement WebHID.
@@ -11,7 +13,7 @@ A browser-based tool to configure the AJAZZ AK820 Pro mechanical keyboard. Syncs
 ## Usage
 
 1. Plug the keyboard in via USB-C and set its mode switch to **wired**.
-2. Open the deployed page in Chrome or Edge.
+2. Open <https://beattrey.github.io/ajazz-ak820-config/> in Chrome or Edge.
 3. Click **Connect keyboard** and grant permission in the device picker.
 4. Use the **Time** and **Image** panels.
 
