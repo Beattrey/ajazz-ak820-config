@@ -25,7 +25,7 @@ export function ConnectPanel() {
 
   return (
     <section className="panel">
-      <h2>Device</h2>
+      <h2>Connection</h2>
       <div className={`device-health health-${health}`} role="status" aria-live="polite">
         <span className="device-health-dot" aria-hidden="true" />
         <span>

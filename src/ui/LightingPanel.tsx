@@ -37,8 +37,6 @@ const MODE_OPTIONS = [
   [LightingMode.Shuttle, "Shuttle"],
 ] as const;
 
-const LEVELS = [0, 1, 2, 3, 4, 5] as const;
-
 const DEFAULT_CONFIG: LightingConfig = {
   mode: LightingMode.Static,
   color: { red: 255, green: 0, blue: 0 },
@@ -51,18 +49,22 @@ const DEFAULT_CONFIG: LightingConfig = {
 const KEY_ROWS = [
   [
     ["Esc"],
+    ["gap-after-esc", 0.75],
     ["F1"],
     ["F2"],
     ["F3"],
     ["F4"],
+    ["gap-after-f4", 0.5],
     ["F5"],
     ["F6"],
     ["F7"],
     ["F8"],
+    ["gap-after-f8", 0.5],
     ["F9"],
     ["F10"],
     ["F11"],
     ["F12"],
+    ["gap-before-delete", 1],
     ["Del"],
   ],
   [
@@ -80,6 +82,7 @@ const KEY_ROWS = [
     ["-"],
     ["="],
     ["Back", 2],
+    ["gap-before-pgup", 0.75],
     ["PgUp"],
   ],
   [
@@ -97,6 +100,7 @@ const KEY_ROWS = [
     ["["],
     ["]"],
     ["\\", 1.5],
+    ["gap-before-pgdn", 0.75],
     ["PgDn"],
   ],
   [
@@ -113,6 +117,7 @@ const KEY_ROWS = [
     [";"],
     ["'"],
     ["Enter", 2.25],
+    ["gap-before-home", 0.75],
     ["Home"],
   ],
   [
@@ -128,6 +133,7 @@ const KEY_ROWS = [
     ["."],
     ["/"],
     ["Shift", 1.75],
+    ["gap-before-up", 0.75],
     ["Up"],
     ["End"],
   ],
@@ -248,147 +254,147 @@ export function LightingPanel() {
     <section className="panel lighting-panel">
       <KeyboardPreview config={config} />
       <div className="lighting-editor">
-      <fieldset className="lighting-controls" disabled={busy}>
-        <label className="control-effect">
-          Effect
-          <select
-            aria-label="Lighting effect"
-            value={config.mode}
-            onChange={(event) => changeMode(Number(event.target.value) as LightingMode)}
-          >
-            {MODE_OPTIONS.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="control-color">
-          Color
-          <input
-            aria-label="Lighting color"
-            type="color"
-            value={rgbToHex(config.color)}
-            onChange={(event) => updateConfig("color", hexToRgb(event.target.value))}
-          />
-        </label>
-        <label className="checkbox-label control-rainbow">
-          <input
-            type="checkbox"
-            checked={config.rainbow}
-            onChange={(event) => updateConfig("rainbow", event.target.checked)}
-          />
-          Rainbow
-        </label>
-        <LevelSelect
-          label="Brightness"
-          value={config.brightness}
-          onChange={(value) => updateConfig("brightness", value)}
-        />
-        <LevelSelect
-          label="Speed"
-          value={config.speed}
-          onChange={(value) => updateConfig("speed", value)}
-        />
-        {directionOptions.length > 0 && (
-          <label>
-            Direction
+        <fieldset className="lighting-controls" disabled={busy}>
+          <label className="control-effect">
+            Effect
             <select
-              aria-label="Direction"
-              value={config.direction}
-              onChange={(event) =>
-                updateConfig("direction", Number(event.target.value) as LightingDirection)
-              }
+              aria-label="Lighting effect"
+              value={config.mode}
+              onChange={(event) => changeMode(Number(event.target.value) as LightingMode)}
             >
-              {directionOptions.map(([value, label]) => (
+              {MODE_OPTIONS.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
           </label>
-        )}
-        <button
-          type="button"
-          className="primary-action"
-          disabled={!connected || busy}
-          aria-busy={applyingLighting}
-          onClick={() => applyLighting()}
-        >
-          {applyingLighting ? "Applying lighting…" : "Apply lighting"}
-        </button>
-      </fieldset>
-      {status && (
-        <p className="lighting-feedback" role="status" aria-live="polite">
-          {status}
-        </p>
-      )}
-
-      <div className="subsection presets-section">
-        <h3>Presets</h3>
-        <label>
-          Saved preset
-          <select
-            aria-label="Saved preset"
-            value={selectedPresetId}
-            onChange={(event) => selectPreset(event.target.value)}
-          >
-            <option value="">Select a preset</option>
-            {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Preset name
-          <input
-            aria-label="Preset name"
-            value={presetName}
-            onChange={(event) => setPresetName(event.target.value)}
+          <label className="control-color">
+            Color
+            <input
+              aria-label="Lighting color"
+              type="color"
+              value={rgbToHex(config.color)}
+              onChange={(event) => updateConfig("color", hexToRgb(event.target.value))}
+            />
+          </label>
+          <label className="checkbox-label control-rainbow">
+            <input
+              type="checkbox"
+              checked={config.rainbow}
+              onChange={(event) => updateConfig("rainbow", event.target.checked)}
+            />
+            Rainbow
+          </label>
+          <LevelSelect
+            label="Brightness"
+            value={config.brightness}
+            onChange={(value) => updateConfig("brightness", value)}
           />
-        </label>
-        <div className="button-row">
-          <button type="button" onClick={savePreset}>
-            Save new
-          </button>
-          <button type="button" disabled={!selectedPreset} onClick={renamePreset}>
-            Rename
-          </button>
-          <button type="button" disabled={!selectedPreset} onClick={deletePreset}>
-            Delete
-          </button>
+          <LevelSelect
+            label="Speed"
+            value={config.speed}
+            onChange={(value) => updateConfig("speed", value)}
+          />
+          {directionOptions.length > 0 && (
+            <label>
+              Direction
+              <select
+                aria-label="Direction"
+                value={config.direction}
+                onChange={(event) =>
+                  updateConfig("direction", Number(event.target.value) as LightingDirection)
+                }
+              >
+                {directionOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
-            disabled={!connected || busy || !selectedPreset}
-            onClick={() => selectedPreset && applyLighting(selectedPreset.config)}
+            className="primary-action"
+            disabled={!connected || busy}
+            aria-busy={applyingLighting}
+            onClick={() => applyLighting()}
           >
-            {applyingLighting ? "Applying preset…" : "Apply preset"}
+            {applyingLighting ? "Applying lighting…" : "Apply lighting"}
+          </button>
+        </fieldset>
+        {status && (
+          <p className="lighting-feedback" role="status" aria-live="polite">
+            {status}
+          </p>
+        )}
+
+        <div className="subsection presets-section">
+          <h3>Presets</h3>
+          <label>
+            Saved preset
+            <select
+              aria-label="Saved preset"
+              value={selectedPresetId}
+              onChange={(event) => selectPreset(event.target.value)}
+            >
+              <option value="">Select a preset</option>
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Preset name
+            <input
+              aria-label="Preset name"
+              value={presetName}
+              onChange={(event) => setPresetName(event.target.value)}
+            />
+          </label>
+          <div className="button-row">
+            <button type="button" onClick={savePreset}>
+              Save new
+            </button>
+            <button type="button" disabled={!selectedPreset} onClick={renamePreset}>
+              Rename
+            </button>
+            <button type="button" disabled={!selectedPreset} onClick={deletePreset}>
+              Delete
+            </button>
+            <button
+              type="button"
+              disabled={!connected || busy || !selectedPreset}
+              onClick={() => selectedPreset && applyLighting(selectedPreset.config)}
+            >
+              {applyingLighting ? "Applying preset…" : "Apply preset"}
+            </button>
+          </div>
+        </div>
+
+        <div className="subsection sleep-section">
+          <h3>Sleep timeout</h3>
+          <label>
+            Turn lighting off after
+            <select
+              aria-label="Lighting sleep timeout"
+              value={sleepTime}
+              disabled={busy}
+              onChange={(event) => setSleepTime(Number(event.target.value) as SleepTime)}
+            >
+              <option value={LightingSleepTime.Never}>Never</option>
+              <option value={LightingSleepTime.OneMinute}>1 minute</option>
+              <option value={LightingSleepTime.FiveMinutes}>5 minutes</option>
+              <option value={LightingSleepTime.ThirtyMinutes}>30 minutes</option>
+            </select>
+          </label>
+          <button type="button" disabled={!connected || busy} onClick={applySleep}>
+            Apply sleep timeout
           </button>
         </div>
-      </div>
-
-      <div className="subsection sleep-section">
-        <h3>Sleep timeout</h3>
-        <label>
-          Turn lighting off after
-          <select
-            aria-label="Lighting sleep timeout"
-            value={sleepTime}
-            disabled={busy}
-            onChange={(event) => setSleepTime(Number(event.target.value) as SleepTime)}
-          >
-            <option value={LightingSleepTime.Never}>Never</option>
-            <option value={LightingSleepTime.OneMinute}>1 minute</option>
-            <option value={LightingSleepTime.FiveMinutes}>5 minutes</option>
-            <option value={LightingSleepTime.ThirtyMinutes}>30 minutes</option>
-          </select>
-        </label>
-        <button type="button" disabled={!connected || busy} onClick={applySleep}>
-          Apply sleep timeout
-        </button>
-      </div>
       </div>
     </section>
   );
@@ -422,7 +428,7 @@ function KeyboardPreview({ config }: { config: LightingConfig }) {
           <div className="keyboard-row" key={row.map(([label]) => label).join("-")}>
             {row.map(([label, width = 1], columnIndex) => (
               <span
-                className="keyboard-key"
+                className={label.startsWith("gap-") ? "keyboard-spacer" : "keyboard-key"}
                 style={
                   {
                     flexGrow: width,
@@ -433,7 +439,7 @@ function KeyboardPreview({ config }: { config: LightingConfig }) {
                 }
                 key={`${label}-${width}`}
               >
-                {label}
+                {label.startsWith("gap-") ? "" : label}
               </span>
             ))}
           </div>
@@ -475,7 +481,9 @@ function LevelSelect({
     <label className="range-control">
       <span>
         {label}
-        <output>{value}</output>
+        <span className="range-value" aria-hidden="true">
+          {value}
+        </span>
       </span>
       <input
         aria-label={label}

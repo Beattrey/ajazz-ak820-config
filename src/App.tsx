@@ -29,7 +29,7 @@ const WORKSPACES: { id: Workspace; label: string; description: string }[] = [
   { id: "device", label: "Device", description: "Connection and time" },
 ];
 
-function Configurator() {
+export function Configurator() {
   const [workspace, setWorkspace] = useState<Workspace>("lighting");
   const { health } = useDeviceSession();
   const current = WORKSPACES.find((item) => item.id === workspace) ?? WORKSPACES[0];
@@ -61,6 +61,7 @@ function Configurator() {
               type="button"
               key={item.id}
               className={workspace === item.id ? "is-active" : ""}
+              aria-label={`${item.label}: ${item.description}`}
               aria-current={workspace === item.id ? "page" : undefined}
               onClick={() => setWorkspace(item.id)}
             >

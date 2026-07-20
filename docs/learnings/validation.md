@@ -1,16 +1,18 @@
 # Validation record
 
+[Learning index](README.md)
+
 Validated on 2026-07-20 from the repository working tree.
 
 ## Automated checks
 
 | Check | Result |
 |---|---|
-| `npm test` | Pass — 18 files, 110 tests |
+| `npm test` | Pass — 19 files, 115 tests |
 | `npm run build` | Pass — TypeScript and Vite production bundle |
-| `npm run lint` | Pass — 46 files, no findings |
-| Desktop render | Pass — Chrome, 1280 × 1000 |
-| Narrow render | Pass at Chrome's minimum layout viewport; 600 px breakpoint active |
+| `npm run lint` | Pass — 47 files, no errors |
+| Desktop render | Pass — Chrome, 1440 × 1000 and large-screen mode at 1728 × 1100 |
+| Narrow render | Responsive stacking checked at 390 × 844; cascade defects corrected |
 
 The suite locks four lighting writes, three control-only GET-feature
 handshakes, and no read after MODE_DATA. Sleep similarly performs no read after
