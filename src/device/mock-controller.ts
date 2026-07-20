@@ -4,8 +4,15 @@ import type { DeviceController, SentReport } from "./types";
 
 export class MockDeviceController implements DeviceController {
   public sent: SentReport[] = [];
+  public receivedFeatureReportIds: number[] = [];
   private connected = false;
   private disconnectHandlers = new Set<() => void>();
+  private sendCount = 0;
+  private readonly options: { failSendAt?: number; healthCheckResponds?: boolean };
+
+  constructor(options: { failSendAt?: number; healthCheckResponds?: boolean } = {}) {
+    this.options = options;
+  }
 
   isConnected(): boolean {
     return this.connected;
@@ -24,20 +31,22 @@ export class MockDeviceController implements DeviceController {
     if (!this.connected) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
-    this.sent.push({ ...report, kind: "feature" });
+    this.recordSend({ ...report, kind: "feature" });
   }
 
   async sendReport(report: ReportMessage): Promise<void> {
     if (!this.connected) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
-    this.sent.push({ ...report, kind: "output" });
+    this.recordSend({ ...report, kind: "output" });
   }
 
-  async receiveFeatureReport(_reportId: number): Promise<DataView | null> {
+  async receiveFeatureReport(reportId: number): Promise<DataView | null> {
     if (!this.connected) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
+    this.receivedFeatureReportIds.push(reportId);
+    if (this.options.healthCheckResponds === false) return null;
     return new DataView(new ArrayBuffer(0));
   }
 
@@ -53,5 +62,17 @@ export class MockDeviceController implements DeviceController {
     return () => {
       this.disconnectHandlers.delete(handler);
     };
+  }
+
+  private recordSend(report: SentReport): void {
+    this.sendCount += 1;
+    if (this.sendCount === this.options.failSendAt) {
+      throw new DeviceFailure({
+        kind: "transfer-failed",
+        reportId: report.reportId,
+        cause: new Error("Injected mock transfer failure"),
+      });
+    }
+    this.sent.push(report);
   }
 }

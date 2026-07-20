@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { DeviceController } from "../device/types";
+import { useRef, useState } from "react";
+import { useDeviceSession } from "../device/DeviceSession";
 import { processStaticImage } from "../image/static";
 import { processAnimatedImage } from "../image/animated";
 import { uploadStaticImage, uploadAnimatedImage } from "../operations";
@@ -9,18 +9,12 @@ type Prepared =
   | { kind: "static"; buffer: Uint8Array }
   | { kind: "animated"; frames: Uint8Array[]; delaysMs: number[] };
 
-export function ImagePanel({ controller }: { controller: DeviceController }) {
-  const [connected, setConnected] = useState(controller.isConnected());
+export function ImagePanel() {
+  const { controller, connected, activeOperation, runOperation } = useDeviceSession();
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => controller.onDisconnect(() => setConnected(false)), [controller]);
-  useEffect(() => {
-    const id = setInterval(() => setConnected(controller.isConnected()), 250);
-    return () => clearInterval(id);
-  }, [controller]);
 
   const onFile = async (file: File) => {
     setStatus(null);
@@ -45,9 +39,13 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
     setStatus("Uploading…");
     try {
       if (prepared.kind === "static") {
-        await uploadStaticImage(controller, prepared.buffer, setProgress);
+        await runOperation("image upload", () =>
+          uploadStaticImage(controller, prepared.buffer, setProgress),
+        );
       } else {
-        await uploadAnimatedImage(controller, prepared.frames, prepared.delaysMs, setProgress);
+        await runOperation("image upload", () =>
+          uploadAnimatedImage(controller, prepared.frames, prepared.delaysMs, setProgress),
+        );
       }
       setStatus("Uploaded");
     } catch (e) {
@@ -56,36 +54,41 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
   };
 
   return (
-    <section className="panel">
-      <h2>Image</h2>
-      <input
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        disabled={!connected}
-        onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
-      />
-      <div style={{ marginTop: "0.75rem" }}>
+    <section className="panel display-panel">
+      <div className="display-preview">
         <canvas
           ref={canvasRef}
           width={SCREEN_WIDTH}
           height={SCREEN_HEIGHT}
-          style={{
-            width: 256,
-            height: 256,
-            imageRendering: "pixelated",
-            border: "1px solid #333",
-          }}
+          aria-label="Keyboard display image preview"
         />
+        {!prepared && <p>Choose an image to preview it on the keyboard display.</p>}
       </div>
-      <div style={{ marginTop: "0.75rem" }}>
-        <button disabled={!connected || !prepared} onClick={onUpload}>
+      <div className="display-controls">
+        <div>
+          <h3>Display image</h3>
+          <p>PNG, JPEG, WebP or GIF. Images are resized to the keyboard's square TFT display.</p>
+        </div>
+        <label className="file-control">
+          Choose image
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            disabled={!connected || activeOperation !== null}
+            onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+          />
+        </label>
+        <button
+          type="button"
+          className="primary-action"
+          disabled={!connected || !prepared || activeOperation !== null}
+          onClick={onUpload}
+        >
           Upload to keyboard
         </button>
+        {progress > 0 && progress < 1 && <progress value={progress} max={1} />}
+        {status && <p role="status">{status}</p>}
       </div>
-      {progress > 0 && progress < 1 && (
-        <progress value={progress} max={1} style={{ width: "100%", marginTop: "0.5rem" }} />
-      )}
-      {status && <p>{status}</p>}
     </section>
   );
 }

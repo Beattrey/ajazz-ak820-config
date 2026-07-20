@@ -28,7 +28,7 @@ Pass criteria: TFT clock updates to host system time within ~1 minute.
 ### T3 — Static image
 
 1. Pick a PNG file ~512×512.
-2. Confirm the preview canvas shows the cropped 128×128 version.
+2. Confirm the preview shows the complete image fitted into 128×128 with dominant-color padding.
 3. Click **Upload to keyboard**.
 4. Observe TFT.
 
@@ -37,10 +37,14 @@ Pass criteria: progress bar advances to 100%, image appears on TFT (orientation,
 ### T4 — Static image — non-square
 
 1. Pick a PNG that is 1000×400 (wide).
-2. Verify preview is a center-cropped square.
+2. Verify the entire image remains visible with dominant-color padding above and below.
 3. Upload.
 
-Pass criteria: TFT shows the same crop as preview.
+Pass criteria: TFT shows the same fitted image and letterboxing as the preview.
+
+For a transparent PNG or GIF, verify the app does not add dominant-color
+padding. Transparent areas and unused space should resolve to black because the
+TFT's RGB565 format cannot carry an alpha channel.
 
 ### T5 — Animated GIF
 
@@ -66,6 +70,55 @@ Pass criteria: app recovers cleanly; second upload succeeds.
 3. Click Connect.
 
 Pass criteria: no permission re-prompt (origin-scoped permission persists).
+
+### T8 — Static red lighting
+
+1. In Lighting, select **Static**, choose red (`#ff0000`), brightness 5, and
+   click **Apply lighting**.
+
+Pass criteria: all keyboard lighting becomes steady red and the UI reports
+"Lighting applied".
+
+### T9 — Lighting off and rainbow
+
+1. Select **Off** and apply; confirm all key lighting turns off.
+2. Select **Spectrum**, enable **Rainbow**, and apply.
+
+Pass criteria: off fully disables lighting and Spectrum starts a rainbow effect.
+
+### T10 — Direction encoding
+
+1. Select **Scrolling**, apply once with Up and once with Down.
+2. Select **Rolling**, apply once with Left and once with Right.
+
+Pass criteria: every direction matches its label. If Up and Down are reversed,
+record it before changing the protocol mapping because the two reference
+implementations disagree on those byte values.
+
+### T11 — Presets
+
+1. Name and save the current lighting configuration.
+2. Reload the page and reconnect.
+3. Select and apply the preset, rename it, then delete it.
+
+Pass criteria: the preset survives reload, applies correctly, and rename/delete
+are persisted without any network request.
+
+### T12 — Lighting sleep timeout
+
+1. Select **1 minute** and click **Apply sleep timeout**.
+2. Leave the keyboard idle without pressing keys.
+
+Pass criteria: keyboard lighting turns off after approximately one minute.
+
+### T13 — Shared operation safety
+
+1. Start a large animated image upload.
+2. While it runs, inspect Time, Lighting, Sleep, and connection controls.
+3. Repeat, unplugging the keyboard during the upload.
+
+Pass criteria: other device actions are disabled and the active operation is
+shown. After disconnect, the operation indicator clears and reconnect works.
 
 ## Known protocol risks
 

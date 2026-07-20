@@ -1,7 +1,24 @@
 import { describe, expect, test } from "vitest";
 import { MockDeviceController } from "../device/mock-controller";
-import { syncTime, uploadStaticImage, uploadAnimatedImage } from "../operations";
+import {
+  setLighting,
+  setLightingSleepTime,
+  syncTime,
+  uploadAnimatedImage,
+  uploadStaticImage,
+} from "../operations";
 import { RGB565_FRAME_BYTES } from "../protocol/constants";
+import { LightingDirection, LightingMode } from "../protocol/lighting";
+import { LightingSleepTime } from "../protocol/lighting-sleep";
+
+const LIGHTING_CONFIG = {
+  mode: LightingMode.Static,
+  color: { red: 255, green: 0, blue: 0 },
+  rainbow: false,
+  brightness: 5 as const,
+  speed: 2 as const,
+  direction: LightingDirection.Left,
+};
 
 describe("syncTime", () => {
   test("sends exactly 4 feature reports (START, TIME_PREAMBLE, TIME_DATA, SAVE)", async () => {
@@ -26,8 +43,55 @@ describe("syncTime", () => {
   });
 });
 
+describe("setLighting", () => {
+  test("sends START, MODE, normalized DATA, and FINISH in order", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+
+    await setLighting(ctrl, LIGHTING_CONFIG);
+
+    expect(ctrl.sent).toHaveLength(4);
+    expect(ctrl.sent.map((report) => report.kind)).toEqual([
+      "feature",
+      "feature",
+      "feature",
+      "feature",
+    ]);
+    expect(ctrl.sent.map((report) => report.reportId)).toEqual([0x04, 0x04, 0x07, 0x04]);
+    expect(ctrl.sent.map((report) => report.bytes[0])).toEqual([0x18, 0x13, 0xff, 0xf0]);
+    expect(ctrl.receivedFeatureReportIds).toEqual([0, 0, 0]);
+  });
+
+  test("stops the transaction and exposes a transfer failure", async () => {
+    const ctrl = new MockDeviceController({ failSendAt: 3 });
+    await ctrl.connect();
+
+    await expect(setLighting(ctrl, LIGHTING_CONFIG)).rejects.toMatchObject({
+      name: "DeviceFailure",
+      error: { kind: "transfer-failed", reportId: LightingMode.Breath },
+    });
+    expect(ctrl.sent).toHaveLength(2);
+  });
+});
+
+describe("setLightingSleepTime", () => {
+  test("sends START, SLEEP preamble, and sleep data", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+
+    await setLightingSleepTime(ctrl, LightingSleepTime.FiveMinutes);
+
+    expect(ctrl.sent).toHaveLength(3);
+    expect(ctrl.sent.map((report) => report.reportId)).toEqual([0x04, 0x04, 0x00]);
+    expect(ctrl.sent[0].bytes[0]).toBe(0x18);
+    expect(ctrl.sent[1].bytes.slice(0, 2)).toEqual(new Uint8Array([0x17, 0x01]));
+    expect(ctrl.sent[2].bytes[7]).toBe(LightingSleepTime.FiveMinutes);
+    expect(ctrl.receivedFeatureReportIds).toEqual([0, 0]);
+  });
+});
+
 describe("uploadStaticImage", () => {
-  test("sends START + CFG + 9 chunks of 4096 + FINISH", async () => {
+  test("sends START + CFG + 9 chunks of 4096 + SAVE", async () => {
     const ctrl = new MockDeviceController();
     await ctrl.connect();
     const buf = new Uint8Array(RGB565_FRAME_BYTES);
@@ -36,18 +100,24 @@ describe("uploadStaticImage", () => {
     await uploadStaticImage(ctrl, buf, (p) => progress.push(p));
 
     // 9 chunks of 4096 bytes per frame.
-    // Sequence: START + CFG + 9 chunks + FINISH = 12 reports.
+    // Sequence: START + CFG + 9 chunks + SAVE = 12 reports.
     expect(ctrl.sent).toHaveLength(12);
 
     expect(ctrl.sent[0].kind).toBe("feature");
     expect(ctrl.sent[1].kind).toBe("feature");
+    expect(ctrl.sent[0].bytes[7]).toBe(0x00);
+    expect(ctrl.sent[1].bytes[1]).toBe(0x03);
     for (let i = 0; i < 9; i++) {
       expect(ctrl.sent[2 + i].kind).toBe("output");
       expect(ctrl.sent[2 + i].reportId).toBe(0);
       expect(ctrl.sent[2 + i].bytes.byteLength).toBe(4096);
     }
+    expect(ctrl.sent[2].bytes[0]).toBe(0x01);
+    expect(ctrl.sent[2].bytes[1]).toBe(0x00);
+    expect(ctrl.sent[2].bytes[2]).toBe(0xff);
     expect(ctrl.sent[11].kind).toBe("feature");
-    expect(ctrl.sent[11].bytes[0]).toBe(0xf0);
+    expect(ctrl.sent[11].bytes[0]).toBe(0x02);
+    expect(ctrl.sent[11].bytes[7]).toBe(0x00);
 
     expect(progress[0]).toBe(0);
     expect(progress.at(-1)).toBe(1);
@@ -59,9 +129,7 @@ describe("uploadStaticImage", () => {
   test("rejects wrong-sized buffer", async () => {
     const ctrl = new MockDeviceController();
     await ctrl.connect();
-    await expect(
-      uploadStaticImage(ctrl, new Uint8Array(100), () => {}),
-    ).rejects.toThrow(/32768/);
+    await expect(uploadStaticImage(ctrl, new Uint8Array(100), () => {})).rejects.toThrow(/32768/);
   });
 });
 
@@ -94,8 +162,6 @@ describe("uploadAnimatedImage (AKS075 path)", () => {
     const ctrl = new MockDeviceController();
     await ctrl.connect();
     const frames = [new Uint8Array(RGB565_FRAME_BYTES)];
-    await expect(
-      uploadAnimatedImage(ctrl, frames, [100, 200], () => {}),
-    ).rejects.toThrow(/delay/i);
+    await expect(uploadAnimatedImage(ctrl, frames, [100, 200], () => {})).rejects.toThrow(/delay/i);
   });
 });

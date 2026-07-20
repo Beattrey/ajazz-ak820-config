@@ -1,17 +1,29 @@
-import { buildTimeSyncReports } from "./protocol/time";
-import {
-  buildImageStartReport,
-  buildImageCfgReport,
-  buildImageFinishReport,
-  buildImageDataChunks,
-  buildAnimatedStartReport,
-  buildAnimatedCfgReport,
-  buildAnimatedSaveReport,
-  buildAnimatedDataChunks,
-} from "./protocol/image";
-import { RGB565_FRAME_BYTES } from "./protocol/constants";
 import { DeviceFailure } from "./device/errors";
 import type { DeviceController } from "./device/types";
+import { RGB565_FRAME_BYTES } from "./protocol/constants";
+import {
+  buildAnimatedCfgReport,
+  buildAnimatedDataChunks,
+  buildAnimatedSaveReport,
+  buildAnimatedStartReport,
+  buildImageCfgReport,
+  buildImageDataChunks,
+  buildImageSaveReport,
+  buildImageStartReport,
+} from "./protocol/image";
+import {
+  buildLightingDataReport,
+  buildLightingFinishReport,
+  buildLightingModePreambleReport,
+  buildLightingStartReport,
+  type LightingConfig,
+} from "./protocol/lighting";
+import {
+  buildLightingSleepDataReport,
+  buildLightingSleepPreambleReport,
+  type LightingSleepTime,
+} from "./protocol/lighting-sleep";
+import { buildTimeSyncReports } from "./protocol/time";
 
 export type ProgressCallback = (fraction: number) => void;
 
@@ -25,10 +37,7 @@ const CHUNK_ACK_TIMEOUT_MS = 300;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export async function syncTime(
-  ctrl: DeviceController,
-  date: Date,
-): Promise<void> {
+export async function syncTime(ctrl: DeviceController, date: Date): Promise<void> {
   // buildTimeSyncReports throws on invalid date.
   const [start, preamble, data, save] = buildTimeSyncReports(date);
 
@@ -49,6 +58,42 @@ export async function syncTime(
   await sleep(POST_SAVE_DELAY_MS);
 }
 
+export async function setLighting(ctrl: DeviceController, config: LightingConfig): Promise<void> {
+  const reports = [
+    buildLightingStartReport(),
+    buildLightingModePreambleReport(),
+    buildLightingDataReport(config),
+    buildLightingFinishReport(),
+  ];
+
+  for (const report of reports) {
+    await ctrl.sendFeatureReport(report);
+    // The keyboard only supports GET_FEATURE for 0x04 control packets.
+    // Reading after the mode-specific data packet can abort its state machine.
+    if (report.reportId === 0x04) await ctrl.receiveFeatureReport(0);
+    await sleep(INTER_PACKET_DELAY_MS);
+  }
+  await sleep(POST_SAVE_DELAY_MS);
+}
+
+export async function setLightingSleepTime(
+  ctrl: DeviceController,
+  sleepTime: LightingSleepTime,
+): Promise<void> {
+  const reports = [
+    buildLightingStartReport(),
+    buildLightingSleepPreambleReport(),
+    buildLightingSleepDataReport(sleepTime),
+  ];
+
+  for (const report of reports) {
+    await ctrl.sendFeatureReport(report);
+    if (report.reportId === 0x04) await ctrl.receiveFeatureReport(0);
+    await sleep(INTER_PACKET_DELAY_MS);
+  }
+  await sleep(POST_SAVE_DELAY_MS);
+}
+
 export async function uploadStaticImage(
   ctrl: DeviceController,
   rgb565: Uint8Array,
@@ -61,8 +106,8 @@ export async function uploadStaticImage(
     });
   }
 
-  // Static path — gohv framing (proven working on AK820 Pro).
-  // START(byte7=1) → IMAGE_CFG(sub=0x02) → 9 chunks of 4096 → FINISH(0xF0)
+  // Static path — AKS075 framing used by the Windows driver.
+  // START(byte7=0) → IMAGE_CFG(sub=0x03) → header + pixels → SAVE(0x02)
   const chunks = buildImageDataChunks([rgb565], undefined);
   onProgress(0);
 
@@ -79,7 +124,7 @@ export async function uploadStaticImage(
   }
 
   await sleep(INTER_PACKET_DELAY_MS);
-  await ctrl.sendFeatureReport(buildImageFinishReport());
+  await ctrl.sendFeatureReport(buildImageSaveReport());
   await ctrl.receiveFeatureReport(0);
   await sleep(POST_SAVE_DELAY_MS);
   onProgress(1);

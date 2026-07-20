@@ -1,25 +1,15 @@
-import { useEffect, useState } from "react";
-import type { DeviceController } from "../device/types";
+import { useState } from "react";
+import { useDeviceSession } from "../device/DeviceSession";
 import { syncTime } from "../operations";
 
-export function TimeSyncPanel({ controller }: { controller: DeviceController }) {
-  const [connected, setConnected] = useState(controller.isConnected());
+export function TimeSyncPanel() {
+  const { controller, connected, activeOperation, runOperation } = useDeviceSession();
   const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => controller.onDisconnect(() => setConnected(false)), [controller]);
-
-  // Poll connection state. The controller is mutated externally by
-  // ConnectPanel; this is the simplest way to keep panels in sync without
-  // adding a global event/state mechanism.
-  useEffect(() => {
-    const id = setInterval(() => setConnected(controller.isConnected()), 250);
-    return () => clearInterval(id);
-  }, [controller]);
 
   const onClick = async () => {
     setStatus("Syncing…");
     try {
-      await syncTime(controller, new Date());
+      await runOperation("time sync", () => syncTime(controller, new Date()));
       setStatus("Time synced");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Sync failed");
@@ -30,7 +20,7 @@ export function TimeSyncPanel({ controller }: { controller: DeviceController }) 
     <section className="panel">
       <h2>Time</h2>
       <p>Sends your Mac's current time to the keyboard.</p>
-      <button onClick={onClick} disabled={!connected}>
+      <button type="button" onClick={onClick} disabled={!connected || activeOperation !== null}>
         Sync now
       </button>
       {status && <p>{status}</p>}

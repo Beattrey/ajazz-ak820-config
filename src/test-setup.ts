@@ -1,4 +1,26 @@
-import { Canvas, Image, createCanvas, loadImage, type CanvasRenderingContext2D as NodeCRC } from "canvas";
+import {
+  type Canvas,
+  type Image,
+  createCanvas,
+  loadImage,
+  type CanvasRenderingContext2D as NodeCRC,
+} from "canvas";
+
+// Node exposes an incomplete experimental localStorage global in some versions.
+// Provide the Storage subset used by the application for deterministic tests.
+const storageValues = new Map<string, string>();
+const testStorage: Storage = {
+  get length() {
+    return storageValues.size;
+  },
+  clear: () => storageValues.clear(),
+  getItem: (key) => storageValues.get(key) ?? null,
+  key: (index) => [...storageValues.keys()][index] ?? null,
+  removeItem: (key) => storageValues.delete(key),
+  setItem: (key, value) => storageValues.set(key, String(value)),
+};
+Object.defineProperty(globalThis, "localStorage", { configurable: true, value: testStorage });
+Object.defineProperty(window, "localStorage", { configurable: true, value: testStorage });
 
 class OffscreenCanvasPolyfill {
   width: number;
@@ -27,7 +49,10 @@ if (!globalThis.Blob.prototype.arrayBuffer) {
     const syms = Object.getOwnPropertySymbols(this) as symbol[];
     for (const sym of syms) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const impl = (this as unknown as Record<symbol, unknown>)[sym] as Record<string, unknown> | null;
+      const impl = (this as unknown as Record<symbol, unknown>)[sym] as Record<
+        string,
+        unknown
+      > | null;
       if (impl && typeof impl === "object" && impl._buffer instanceof Buffer) {
         const nodeBuf: Buffer = impl._buffer as Buffer;
         // Copy into a plain ArrayBuffer so callers get a detached view
@@ -40,9 +65,11 @@ if (!globalThis.Blob.prototype.arrayBuffer) {
   };
 }
 
-(globalThis as unknown as {
-  createImageBitmap: (source: Blob) => Promise<Image>;
-}).createImageBitmap = async (source: Blob): Promise<Image> => {
+(
+  globalThis as unknown as {
+    createImageBitmap: (source: Blob) => Promise<Image>;
+  }
+).createImageBitmap = async (source: Blob): Promise<Image> => {
   const buf = Buffer.from(await source.arrayBuffer());
   return await loadImage(buf);
 };

@@ -25,17 +25,22 @@ Implemented:
 - Static image upload — PNG / JPEG / WebP.
 - Animated GIF upload — alpha-aware compositing, GIF disposal methods 0/1/2/3 honored.
 
-Not implemented:
+Also implemented:
 
-- Key remapping
-- RGB lighting profiles
-- Macro recording
+- RGB lighting effects, color, brightness, speed, rainbow, and direction.
+- A responsive virtual AK820 Pro keyboard that previews the selected whole-board lighting.
+- Browser-local lighting presets.
+- Lighting sleep timeout.
+- Shared device-operation locking across time, image, and lighting actions.
+
+Not implemented: key remapping and macro recording; their device protocols
+still require hardware capture and safe restoration research.
 
 ## Limits
 
 - Static image: PNG / JPEG / WebP, up to **10 MB**.
 - Animated GIF: up to **20 MB**, max **2048 × 2048 px**, max **256 frames**, total decoded patch pixels ≤ 50 M.
-- All images are center-cropped and downscaled to 128 × 128 (the TFT's native resolution).
+- All images are aspect-fitted to 128 × 128. Opaque images use dominant-color padding; images containing transparency use black because RGB565 has no alpha channel.
 
 ## Security
 
@@ -57,8 +62,9 @@ npm run build    # production build
 - `src/protocol/` — pure byte-builder functions; fully unit-tested against byte-level fixtures.
 - `src/image/` — File → RGB565 buffer transformations (static and animated).
 - `src/device/` — WebHID-backed `DeviceController` plus a `MockDeviceController` for tests.
-- `src/ui/` — React panels (Connect, TimeSync, Image).
-- `src/operations.ts` — high-level orchestration (`syncTime`, `uploadStaticImage`, `uploadAnimatedImage`).
+- `src/ui/` — React panels (Connect, TimeSync, Lighting, Image).
+- `src/storage/` — versioned browser-local lighting preset persistence.
+- `src/operations.ts` — high-level time, lighting, sleep, and image orchestration.
 
 See [`docs/protocol-notes.md`](docs/protocol-notes.md) for byte-level protocol details and [`docs/manual-test.md`](docs/manual-test.md) for the hardware test plan.
 

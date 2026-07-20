@@ -1,5 +1,12 @@
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../protocol/constants";
+import {
+  calculateContainRect,
+  containsTransparency,
+  fillContainPadding,
+  findDominantColor,
+  flattenTransparencyOntoBlack,
+} from "./resize";
 import { rgb888ToRgb565 } from "./rgb565";
-import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../protocol/constants";
 
 const SUPPORTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -26,21 +33,15 @@ export async function processStaticImage(file: File): Promise<Uint8Array> {
     throw new Error("processStaticImage: 2D context unavailable");
   }
 
-  // Cover + center crop: scale so the shorter side fills the canvas,
-  // then center the longer side.
   const sw = (bitmap as unknown as { width: number }).width;
   const sh = (bitmap as unknown as { height: number }).height;
-  const scale = Math.max(SCREEN_WIDTH / sw, SCREEN_HEIGHT / sh);
-  const dw = sw * scale;
-  const dh = sh * scale;
-  const dx = (SCREEN_WIDTH - dw) / 2;
-  const dy = (SCREEN_HEIGHT - dh) / 2;
+  const rect = calculateContainRect(sw, sh, SCREEN_WIDTH, SCREEN_HEIGHT);
   (ctx as unknown as CanvasRenderingContext2D).drawImage(
     bitmap as unknown as CanvasImageSource,
-    dx,
-    dy,
-    dw,
-    dh,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
   );
 
   const imageData = (ctx as unknown as CanvasRenderingContext2D).getImageData(
@@ -49,5 +50,11 @@ export async function processStaticImage(file: File): Promise<Uint8Array> {
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
   );
+  if (containsTransparency(imageData.data, SCREEN_WIDTH, SCREEN_HEIGHT, rect)) {
+    flattenTransparencyOntoBlack(imageData.data);
+  } else {
+    const dominantColor = findDominantColor(imageData.data, SCREEN_WIDTH, SCREEN_HEIGHT, rect);
+    fillContainPadding(imageData.data, SCREEN_WIDTH, SCREEN_HEIGHT, rect, dominantColor);
+  }
   return rgb888ToRgb565(imageData.data, SCREEN_WIDTH, SCREEN_HEIGHT, "le");
 }

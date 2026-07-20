@@ -1,3 +1,4 @@
+// biome-ignore lint/correctness/noUnusedImports: required by this test file's classic JSX transform
 import React from "react";
 import { describe, expect, test } from "vitest";
 import { render } from "@testing-library/react";

@@ -1,22 +1,20 @@
-import { CHUNK_SIZE, CHUNKS_PER_FRAME } from "./constants";
+import { CHUNK_SIZE } from "./constants";
 import type { ReportMessage } from "./types";
 
-// gohv framing (AK820-Pro-empirical). Differs from the AKS075/Windows-driver
-// framing in four places: START enable=1 (not 0), IMAGE_CFG sub=0x02
-// (not 0x03), transfer terminates with FINISH (0xF0) instead of SAVE (0x02),
-// and there is NO 256-byte frame header — payload is pure RGB565 pixel data.
+// AKS075/Windows-driver framing used by AK820 Pro firmware.
 const CONTROL_LEAD = 0x04;
 const CMD_START = 0x18;
 const CMD_IMAGE = 0x72;
-const CMD_FINISH = 0xf0;
-const IMAGE_CFG_SUBCOMMAND = 0x02;
+const CMD_SAVE = 0x02;
+const IMAGE_CFG_SUBCOMMAND = 0x03;
 const PAYLOAD_LENGTH = 63; // 64-byte packet minus reportId byte
 const RGB565_FRAME_BYTES = 128 * 128 * 2; // 32768
+const FRAME_HEADER_BYTES = 256;
 
 export function buildImageStartReport(): ReportMessage {
   const bytes = new Uint8Array(PAYLOAD_LENGTH);
   bytes[0] = CMD_START;
-  bytes[7] = 0x01; // enable flag = 1 in gohv (vs 0 in aks075)
+  // bytes[7] = 0 (AKS075 sends enable=false for image transfer)
   return { reportId: CONTROL_LEAD, bytes };
 }
 
@@ -34,10 +32,10 @@ export function buildImageCfgReport(chunkCount: number): ReportMessage {
   return { reportId: CONTROL_LEAD, bytes };
 }
 
-export function buildImageFinishReport(): ReportMessage {
+export function buildImageSaveReport(): ReportMessage {
   const bytes = new Uint8Array(PAYLOAD_LENGTH);
-  bytes[0] = CMD_FINISH;
-  bytes[7] = 0x01; // enable=1 per gohv source
+  bytes[0] = CMD_SAVE;
+  // bytes[7] = 0 (AKS075 SAVE has no enable flag)
   return { reportId: CONTROL_LEAD, bytes };
 }
 
@@ -61,21 +59,21 @@ export function buildImageDataChunks(
     );
   }
 
-  // gohv framing: pure pixel data with NO 256-byte header. Each frame is
-  // allocated exactly CHUNKS_PER_FRAME * CHUNK_SIZE bytes of buffer space —
-  // 32768 bytes of RGB565 pixel data followed by 0xFF padding to the chunk
-  // boundary. Frames concatenated back-to-back; chunkCount = N * CHUNKS_PER_FRAME.
-  //
-  // Animated GIFs lose their per-frame delays in this framing — gohv only
-  // demonstrates static. AK820 Pro firmware's animated handling is unknown.
-  const bytesPerFrame = CHUNKS_PER_FRAME * CHUNK_SIZE;
-  const chunkCount = frames.length * CHUNKS_PER_FRAME;
+  // AKS075 framing starts with a 256-byte frame header. A static upload has
+  // frame_count=1 and delay=0; remaining header and chunk padding bytes are FF.
+  const payloadSize = FRAME_HEADER_BYTES + frames.length * RGB565_FRAME_BYTES;
+  const chunkCount = Math.ceil(payloadSize / CHUNK_SIZE);
   const totalSize = chunkCount * CHUNK_SIZE;
 
   const payload = new Uint8Array(totalSize).fill(0xff);
+  payload[0] = frames.length;
+  for (let i = 0; i < frames.length; i++) {
+    payload[1 + i] = delaysMs ? Math.min(255, Math.max(1, Math.floor(delaysMs[i] / 2))) : 0;
+  }
+  let offset = FRAME_HEADER_BYTES;
   for (let f = 0; f < frames.length; f++) {
-    payload.set(frames[f], f * bytesPerFrame);
-    // bytes [f*bytesPerFrame + 32768, (f+1)*bytesPerFrame) stay 0xFF.
+    payload.set(frames[f], offset);
+    offset += frames[f].byteLength;
   }
 
   const chunks: Uint8Array[] = [];
@@ -95,8 +93,6 @@ export function buildImageDataChunks(
 // which to use based on whether the upload is animated.
 
 const ANIMATED_CFG_SUB = 0x03;
-const FRAME_HEADER_BYTES = 256;
-const CMD_SAVE = 0x02;
 
 export function buildAnimatedStartReport(): ReportMessage {
   const bytes = new Uint8Array(PAYLOAD_LENGTH);

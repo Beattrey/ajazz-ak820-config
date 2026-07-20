@@ -1,6 +1,7 @@
-import { parseGIF, decompressFrames } from "gifuct-js";
+import { decompressFrames, parseGIF } from "gifuct-js";
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../protocol/constants";
+import { containResizeRgba } from "./resize";
 import { rgb888ToRgb565 } from "./rgb565";
-import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../protocol/constants";
 
 export type AnimatedImage = {
   frames: Uint8Array[];
@@ -53,8 +54,7 @@ export function* rasterizeGifFrames(
       composite.set(prevSnapshot);
     }
 
-    prevSnapshot =
-      frame.disposalType === 3 ? new Uint8ClampedArray(composite) : null;
+    prevSnapshot = frame.disposalType === 3 ? new Uint8ClampedArray(composite) : null;
 
     const { left, top, width, height } = frame.dims;
     for (let y = 0; y < height; y++) {
@@ -98,47 +98,6 @@ function fillRect(
       buffer[idx + 3] = color[3];
     }
   }
-}
-
-/**
- * Nearest-neighbour cover-crop resize from source RGBA buffer to
- * SCREEN_WIDTH x SCREEN_HEIGHT RGBA buffer.
- *
- * This avoids canvas-to-canvas drawImage, which is broken in the
- * jsdom + node-canvas test environment (node-canvas drawImage only
- * accepts a real Canvas / Image, not the OffscreenCanvas polyfill).
- */
-function coverCropResize(
-  src: Uint8ClampedArray,
-  srcW: number,
-  srcH: number,
-): Uint8ClampedArray {
-  const dstW = SCREEN_WIDTH;
-  const dstH = SCREEN_HEIGHT;
-
-  const scale = Math.max(dstW / srcW, dstH / srcH);
-  const scaledW = srcW * scale;
-  const scaledH = srcH * scale;
-  const offX = (dstW - scaledW) / 2;
-  const offY = (dstH - scaledH) / 2;
-
-  const dst = new Uint8ClampedArray(dstW * dstH * 4);
-
-  for (let dy = 0; dy < dstH; dy++) {
-    for (let dx = 0; dx < dstW; dx++) {
-      const sx = Math.round((dx - offX) / scale);
-      const sy = Math.round((dy - offY) / scale);
-      const cx = Math.max(0, Math.min(srcW - 1, sx));
-      const cy = Math.max(0, Math.min(srcH - 1, sy));
-      const srcIdx = (cy * srcW + cx) * 4;
-      const dstIdx = (dy * dstW + dx) * 4;
-      dst[dstIdx] = src[srcIdx];
-      dst[dstIdx + 1] = src[srcIdx + 1];
-      dst[dstIdx + 2] = src[srcIdx + 2];
-      dst[dstIdx + 3] = src[srcIdx + 3];
-    }
-  }
-  return dst;
 }
 
 // Bounds against decompression-bomb GIFs. With streaming rasterization,
@@ -192,9 +151,7 @@ export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
     throw new Error("processAnimatedImage: GIF has no frames");
   }
   if (frameCount > MAX_GIF_FRAMES) {
-    throw new Error(
-      `processAnimatedImage: ${frameCount} frames exceed max ${MAX_GIF_FRAMES}`,
-    );
+    throw new Error(`processAnimatedImage: ${frameCount} frames exceed max ${MAX_GIF_FRAMES}`);
   }
   if (totalPatchPixels > MAX_PATCH_PIXELS) {
     throw new Error(
@@ -220,7 +177,13 @@ export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
   const delaysMs: number[] = [];
 
   for (const { rgba, delayMs } of composed) {
-    const resized = coverCropResize(rgba, gif.lsd.width, gif.lsd.height);
+    const resized = containResizeRgba(
+      rgba,
+      gif.lsd.width,
+      gif.lsd.height,
+      SCREEN_WIDTH,
+      SCREEN_HEIGHT,
+    );
     frames.push(rgb888ToRgb565(resized, SCREEN_WIDTH, SCREEN_HEIGHT, "le"));
     delaysMs.push(delayMs);
   }

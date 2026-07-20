@@ -9,9 +9,7 @@ import { DeviceFailure } from "./errors";
 import type { DeviceController } from "./types";
 
 function findByUsagePage(devices: readonly HIDDevice[], usagePage: number): HIDDevice | undefined {
-  return devices.find((d) =>
-    d.collections.some((c) => c.usagePage === usagePage),
-  );
+  return devices.find((d) => d.collections.some((c) => c.usagePage === usagePage));
 }
 
 /**
@@ -47,9 +45,7 @@ export class WebHIDDeviceController implements DeviceController {
   private boundDataInputListener: ((event: HIDInputReportEvent) => void) | null = null;
 
   isConnected(): boolean {
-    return (
-      this.controlDevice?.opened === true && this.dataDevice?.opened === true
-    );
+    return this.controlDevice?.opened === true && this.dataDevice?.opened === true;
   }
 
   async connect(): Promise<void> {
@@ -132,7 +128,7 @@ export class WebHIDDeviceController implements DeviceController {
 
   async sendFeatureReport(report: ReportMessage): Promise<void> {
     const device = this.controlDevice;
-    if (!device || !device.opened) {
+    if (!device?.opened) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
     const wire = toUnnumberedWire(report);
@@ -149,7 +145,7 @@ export class WebHIDDeviceController implements DeviceController {
 
   async sendReport(report: ReportMessage): Promise<void> {
     const device = this.dataDevice;
-    if (!device || !device.opened) {
+    if (!device?.opened) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
     // Data-interface OUTPUT reports are pure 4096-byte chunks sent as
@@ -168,7 +164,7 @@ export class WebHIDDeviceController implements DeviceController {
 
   async waitForDataInputReport(timeoutMs: number): Promise<DataView | null> {
     const device = this.dataDevice;
-    if (!device || !device.opened) {
+    if (!device?.opened) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
     // If a report has already arrived since the last wait, return it.
@@ -190,7 +186,7 @@ export class WebHIDDeviceController implements DeviceController {
 
   async receiveFeatureReport(reportId: number): Promise<DataView | null> {
     const device = this.controlDevice;
-    if (!device || !device.opened) {
+    if (!device?.opened) {
       throw new DeviceFailure({ kind: "device-disconnected" });
     }
     try {
