@@ -24,7 +24,7 @@ export default function App() {
 type Workspace = "lighting" | "display" | "device";
 
 const WORKSPACES: { id: Workspace; label: string; description: string }[] = [
-  { id: "lighting", label: "Lighting", description: "Effects, colour and presets" },
+  { id: "lighting", label: "Lighting", description: "Effects, colour and sleep" },
   { id: "display", label: "Display", description: "TFT image upload" },
   { id: "device", label: "Device", description: "Connection and time" },
 ];

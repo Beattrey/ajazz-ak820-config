@@ -8,11 +8,6 @@ import {
   LightingMode,
 } from "../protocol/lighting";
 import { LightingSleepTime, type LightingSleepTime as SleepTime } from "../protocol/lighting-sleep";
-import {
-  loadLightingPresets,
-  saveLightingPresets,
-  type LightingPreset,
-} from "../storage/lighting-presets";
 
 const MODE_OPTIONS = [
   [LightingMode.Off, "Off"],
@@ -156,10 +151,6 @@ export function LightingPanel() {
   const [config, setConfig] = useState<LightingConfig>(DEFAULT_CONFIG);
   const [sleepTime, setSleepTime] = useState<SleepTime>(LightingSleepTime.Never);
   const [status, setStatus] = useState<string | null>(null);
-  const [presets, setPresets] = useState<LightingPreset[]>(() => loadLightingPresets());
-  const [selectedPresetId, setSelectedPresetId] = useState("");
-  const [presetName, setPresetName] = useState("");
-  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null;
   const directionOptions = useMemo(() => directionsForMode(config.mode), [config.mode]);
   const busy = activeOperation !== null;
   const applyingLighting = activeOperation === "lighting";
@@ -176,10 +167,10 @@ export function LightingPanel() {
     }));
   };
 
-  const applyLighting = async (value: LightingConfig = config) => {
+  const applyLighting = async () => {
     setStatus("Applying lighting…");
     try {
-      await runOperation("lighting", () => setLighting(controller, value));
+      await runOperation("lighting", () => setLighting(controller, config));
       setStatus("Lighting applied");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Lighting update failed");
@@ -193,60 +184,6 @@ export function LightingPanel() {
       setStatus("Sleep timeout applied");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Sleep timeout update failed");
-    }
-  };
-
-  const persist = (next: LightingPreset[], success: string) => {
-    try {
-      saveLightingPresets(next);
-      setPresets(next);
-      setStatus(success);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not save presets");
-    }
-  };
-
-  const savePreset = () => {
-    const name = presetName.trim();
-    if (!name) {
-      setStatus("Enter a preset name.");
-      return;
-    }
-    const id = globalThis.crypto?.randomUUID?.() ?? `preset-${Date.now()}`;
-    const preset = { id, name, config };
-    persist([...presets, preset], "Preset saved");
-    setSelectedPresetId(id);
-  };
-
-  const renamePreset = () => {
-    if (!selectedPreset) return;
-    const name = presetName.trim();
-    if (!name) {
-      setStatus("Enter a preset name.");
-      return;
-    }
-    persist(
-      presets.map((preset) => (preset.id === selectedPreset.id ? { ...preset, name } : preset)),
-      "Preset renamed",
-    );
-  };
-
-  const deletePreset = () => {
-    if (!selectedPreset) return;
-    persist(
-      presets.filter((preset) => preset.id !== selectedPreset.id),
-      "Preset deleted",
-    );
-    setSelectedPresetId("");
-    setPresetName("");
-  };
-
-  const selectPreset = (id: string) => {
-    setSelectedPresetId(id);
-    const preset = presets.find((item) => item.id === id);
-    if (preset) {
-      setConfig(preset.config);
-      setPresetName(preset.name);
     }
   };
 
@@ -319,7 +256,7 @@ export function LightingPanel() {
             className="primary-action"
             disabled={!connected || busy}
             aria-busy={applyingLighting}
-            onClick={() => applyLighting()}
+            onClick={applyLighting}
           >
             {applyingLighting ? "Applying lighting…" : "Apply lighting"}
           </button>
@@ -329,51 +266,6 @@ export function LightingPanel() {
             {status}
           </p>
         )}
-
-        <div className="subsection presets-section">
-          <h3>Presets</h3>
-          <label>
-            Saved preset
-            <select
-              aria-label="Saved preset"
-              value={selectedPresetId}
-              onChange={(event) => selectPreset(event.target.value)}
-            >
-              <option value="">Select a preset</option>
-              {presets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Preset name
-            <input
-              aria-label="Preset name"
-              value={presetName}
-              onChange={(event) => setPresetName(event.target.value)}
-            />
-          </label>
-          <div className="button-row">
-            <button type="button" onClick={savePreset}>
-              Save new
-            </button>
-            <button type="button" disabled={!selectedPreset} onClick={renamePreset}>
-              Rename
-            </button>
-            <button type="button" disabled={!selectedPreset} onClick={deletePreset}>
-              Delete
-            </button>
-            <button
-              type="button"
-              disabled={!connected || busy || !selectedPreset}
-              onClick={() => selectedPreset && applyLighting(selectedPreset.config)}
-            >
-              {applyingLighting ? "Applying preset…" : "Apply preset"}
-            </button>
-          </div>
-        </div>
 
         <div className="subsection sleep-section">
           <h3>Sleep timeout</h3>

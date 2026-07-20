@@ -17,8 +17,8 @@ frame size = 128 × 128 × 2 = 32768 bytes
 
 All processing happens locally in the browser:
 
-1. Decode static images with `createImageBitmap`, or animated GIFs with
-   `gifuct-js`.
+1. Decode static images with `createImageBitmap`, animated GIFs with
+   `gifuct-js`, or animated WebPs frame-by-frame with WebCodecs `ImageDecoder`.
 2. Resize with `containResizeRgba`, preserving the complete source without
    cropping.
 3. Fill unused space for opaque sources using the dominant displayed color.

@@ -375,17 +375,13 @@ select {
   border: 0;
 }
 
-.lighting-editor .presets-section {
+.sleep-section {
   grid-column: 2;
   grid-row: 1;
   padding: 1rem;
   border: 1px solid #333;
   border-radius: 8px;
   background: #151515;
-}
-
-.sleep-section {
-  grid-column: 2;
 }
 
 .subsection h3 {
@@ -774,7 +770,6 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .lighting-editor .presets-section,
   .lighting-editor .sleep-section {
     grid-column: auto;
     grid-row: auto;

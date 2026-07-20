@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useDeviceSession } from "../device/DeviceSession";
 import { processStaticImage } from "../image/static";
-import { processAnimatedImage } from "../image/animated";
+import { isAnimatedWebP, processAnimatedImage } from "../image/animated";
 import { uploadStaticImage, uploadAnimatedImage } from "../operations";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../protocol/constants";
 
@@ -20,7 +20,7 @@ export function ImagePanel() {
     setStatus(null);
     setProgress(0);
     try {
-      if (file.type === "image/gif") {
+      if (file.type === "image/gif" || (file.type === "image/webp" && (await isAnimatedWebP(file)))) {
         const anim = await processAnimatedImage(file);
         setPrepared({ kind: "animated", frames: anim.frames, delaysMs: anim.delaysMs });
         drawPreview(canvasRef.current, anim.frames[0]);
@@ -67,7 +67,7 @@ export function ImagePanel() {
       <div className="display-controls">
         <div>
           <h3>Display image</h3>
-          <p>PNG, JPEG, WebP or GIF. Images are resized to the keyboard's square TFT display.</p>
+          <p>PNG, JPEG, WebP or GIF. Animated WebP and GIF files retain their animation.</p>
         </div>
         <label className="file-control">
           Choose image

@@ -1,14 +1,13 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 // biome-ignore lint/correctness/noUnusedImports: required by this test file's classic JSX transform
 import React from "react";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { DeviceSessionProvider } from "../../device/DeviceSession";
 import { MockDeviceController } from "../../device/mock-controller";
 import { LightingMode } from "../../protocol/lighting";
 import { LightingPanel } from "../LightingPanel";
 
 afterEach(cleanup);
-beforeEach(() => localStorage.clear());
 
 async function renderPanel(controller = new MockDeviceController()) {
   await controller.connect();
@@ -75,20 +74,6 @@ describe("LightingPanel", () => {
     const view = await renderPanel(controller);
     fireEvent.click(view.getByRole("button", { name: "Apply lighting" }));
     await waitFor(() => expect(view.getByRole("status").textContent).toMatch(/Transfer failed/));
-  });
-
-  test("saves, renames, and deletes a local preset", async () => {
-    const view = await renderPanel();
-    fireEvent.change(view.getByLabelText("Preset name"), { target: { value: "Work" } });
-    fireEvent.click(view.getByRole("button", { name: "Save new" }));
-    expect(view.getByLabelText("Saved preset").textContent).toContain("Work");
-
-    fireEvent.change(view.getByLabelText("Preset name"), { target: { value: "Evening" } });
-    fireEvent.click(view.getByRole("button", { name: "Rename" }));
-    expect(view.getByLabelText("Saved preset").textContent).toContain("Evening");
-
-    fireEvent.click(view.getByRole("button", { name: "Delete" }));
-    expect(view.getByLabelText("Saved preset").textContent).not.toContain("Evening");
   });
 
   test("submits the selected sleep timeout", async () => {

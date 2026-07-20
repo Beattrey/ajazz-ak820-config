@@ -6,7 +6,7 @@ hardware testing, and interface design. Each subject has one canonical home:
 | Document | Use it for |
 |---|---|
 | [Hardware and transport](hardware-and-transport.md) | HID interfaces, wired-mode constraints, report handling, ACKs, and timing |
-| [Lighting](lighting.md) | Lighting and sleep packets, normalization, presets, and hardware limits |
+| [Lighting](lighting.md) | Lighting and sleep packets, normalization, preview, and hardware limits |
 | [Display images](display-images.md) | RGB565 conversion, resizing, GIF compositing, upload framing, and persistence |
 | [UX and responsive layout](ux-and-responsive-layout.md) | Workspace hierarchy, virtual-keyboard geometry, responsive behavior, and accessibility |
 | [Validation](validation.md) | Automated evidence, visual checks, hardware boundaries, and release checklist |
@@ -21,4 +21,3 @@ hardware testing, and interface design. Each subject has one canonical home:
 
 The protocol facts describe what the current evidence supports. Items requiring
 the physical keyboard are explicitly separated from automated guarantees.
-

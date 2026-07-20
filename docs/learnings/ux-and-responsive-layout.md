@@ -18,7 +18,6 @@ connection rather than competing as a top-level task.
 - Keep previews beside the controls they reflect.
 - Use range inputs for brightness and speed to support rapid experimentation.
 - Show one visually dominant apply action per task.
-- Keep presets adjacent to lighting controls on wide screens.
 - Use explicit live regions for operation feedback only.
 
 HTML `output` has an implicit status role. Using it for visible range values
@@ -43,18 +42,13 @@ This prevents the preview becoming a wide, shallow banner.
 
 - Default desktop application ceiling: 1280 px.
 - At 1280 px and above: restrained 1400 px application ceiling, stable editing
-  and preset columns, and bounded keyboard preview.
+  columns, and bounded keyboard preview.
 - At 880 px and below: sidebar becomes three-item top navigation and
   multi-column workspaces stack.
 - At 520 px and below: lighting controls use one column and navigation helper
   text is visually hidden while descriptive accessible names remain.
 - On narrow screens: preserve readable keyboard geometry and scroll the
   preview internally rather than shrinking labels beyond legibility.
-
-The first narrow render exposed a cascade issue: the desktop selector
-`.lighting-editor .presets-section` was more specific than the mobile reset.
-Responsive overrides that reset grid placement must match the desktop
-selector's specificity.
 
 ## Large-screen lesson
 

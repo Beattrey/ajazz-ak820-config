@@ -17,9 +17,7 @@ describe("MockDeviceController", () => {
     const ctrl = new MockDeviceController();
     await ctrl.connect();
     await ctrl.sendReport({ reportId: 0, bytes: new Uint8Array([0x11]) });
-    expect(ctrl.sent).toEqual([
-      { kind: "output", reportId: 0, bytes: new Uint8Array([0x11]) },
-    ]);
+    expect(ctrl.sent).toEqual([{ kind: "output", reportId: 0, bytes: new Uint8Array([0x11]) }]);
   });
 
   test("rejects sends when disconnected", async () => {
@@ -31,9 +29,9 @@ describe("MockDeviceController", () => {
 
   test("rejects output sends when disconnected", async () => {
     const ctrl = new MockDeviceController();
-    await expect(
-      ctrl.sendReport({ reportId: 0, bytes: new Uint8Array() }),
-    ).rejects.toMatchObject({ name: "DeviceFailure" });
+    await expect(ctrl.sendReport({ reportId: 0, bytes: new Uint8Array() })).rejects.toMatchObject({
+      name: "DeviceFailure",
+    });
   });
 
   test("emits disconnect event", async () => {

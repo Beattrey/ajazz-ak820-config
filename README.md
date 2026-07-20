@@ -23,13 +23,12 @@ Implemented:
 
 - System time sync to the TFT clock.
 - Static image upload — PNG / JPEG / WebP.
-- Animated GIF upload — alpha-aware compositing, GIF disposal methods 0/1/2/3 honored.
+- Animated GIF and WebP upload — frame timing retained; GIF disposal methods 0/1/2/3 honored.
 
 Also implemented:
 
 - RGB lighting effects, color, brightness, speed, rainbow, and direction.
 - A responsive virtual AK820 Pro keyboard that previews the selected whole-board lighting.
-- Browser-local lighting presets.
 - Lighting sleep timeout.
 - Shared device-operation locking across time, image, and lighting actions.
 
@@ -39,7 +38,7 @@ still require hardware capture and safe restoration research.
 ## Limits
 
 - Static image: PNG / JPEG / WebP, up to **10 MB**.
-- Animated GIF: up to **20 MB**, max **2048 × 2048 px**, max **256 frames**, total decoded patch pixels ≤ 50 M.
+- Animated GIF or WebP: up to **20 MB**, max **2048 × 2048 px**, max **256 frames**. GIF decoded patch pixels are limited to 50 M.
 - All images are aspect-fitted to 128 × 128. Opaque images use dominant-color padding; images containing transparency use black because RGB565 has no alpha channel.
 
 ## Security
@@ -57,16 +56,36 @@ npm run test     # unit + component tests
 npm run build    # production build
 ```
 
+Alternatively, start the app from any directory with:
+
+```bash
+./start.sh
+```
+
+The script installs locked dependencies when needed and forwards any additional
+arguments to Vite (for example, `./start.sh --host`).
+
 ## Architecture
 
 - `src/protocol/` — pure byte-builder functions; fully unit-tested against byte-level fixtures.
 - `src/image/` — File → RGB565 buffer transformations (static and animated).
 - `src/device/` — WebHID-backed `DeviceController` plus a `MockDeviceController` for tests.
 - `src/ui/` — React panels (Connect, TimeSync, Lighting, Image).
-- `src/storage/` — versioned browser-local lighting preset persistence.
 - `src/operations.ts` — high-level time, lighting, sleep, and image orchestration.
 
 See [`docs/protocol-notes.md`](docs/protocol-notes.md) for byte-level protocol details and [`docs/manual-test.md`](docs/manual-test.md) for the hardware test plan.
+
+## GitHub Pages deployment
+
+The production build is configured for
+`https://craigsdel.github.io/ajazz-ak820-config/`. The
+[`Deploy to GitHub Pages`](.github/workflows/deploy-pages.yml) workflow tests,
+builds, and deploys the site after each push to `main`; it can also be run
+manually from the repository's **Actions** tab.
+
+For the first deployment, open **Settings → Pages** in GitHub and set **Source**
+to **GitHub Actions**. WebHID requires a secure context, which the GitHub Pages
+HTTPS URL provides.
 
 ## Credits
 

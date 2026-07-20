@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { createCanvas } from "canvas";
 import GIFEncoder from "gif-encoder-2";
 import {
+  inspectWebP,
+  isAnimatedWebP,
   processAnimatedImage,
   rasterizeGifFrames,
   type DecodedGifFrame,
@@ -31,6 +33,38 @@ function makeThreeFrameGif(): Uint8Array {
   encoder.addFrame(ctx);
   encoder.finish();
   return new Uint8Array(encoder.out.getData());
+}
+
+function makeWebPContainer(animated: boolean, frameCount = 0): Uint8Array {
+  const chunks: Array<{ kind: string; payload: Uint8Array }> = [];
+  const vp8x = new Uint8Array(10);
+  if (animated) vp8x[0] = 0x02;
+  vp8x[4] = 1; // width = 2 (24-bit value stores width - 1)
+  vp8x[7] = 1; // height = 2
+  chunks.push({ kind: "VP8X", payload: vp8x });
+  if (animated) {
+    chunks.push({ kind: "ANIM", payload: new Uint8Array(6) });
+    for (let i = 0; i < frameCount; i++) {
+      chunks.push({ kind: "ANMF", payload: new Uint8Array(16) });
+    }
+  }
+  const size = 12 + chunks.reduce((sum, chunk) => sum + 8 + chunk.payload.length, 0);
+  const bytes = new Uint8Array(size);
+  const view = new DataView(bytes.buffer);
+  const write = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) bytes[offset + i] = value.charCodeAt(i);
+  };
+  write(0, "RIFF");
+  view.setUint32(4, size - 8, true);
+  write(8, "WEBP");
+  let offset = 12;
+  for (const chunk of chunks) {
+    write(offset, chunk.kind);
+    view.setUint32(offset + 4, chunk.payload.length, true);
+    bytes.set(chunk.payload, offset + 8);
+    offset += 8 + chunk.payload.length;
+  }
+  return bytes;
 }
 
 describe("processAnimatedImage", () => {
@@ -86,7 +120,7 @@ describe("processAnimatedImage", () => {
     expect(c2.b).toBeGreaterThan(c2.g);
   });
 
-  test("rejects non-GIF MIME types", async () => {
+  test("rejects MIME types other than GIF and WebP", async () => {
     const file = new File([new Uint8Array(10)], "bad.png", { type: "image/png" });
     await expect(processAnimatedImage(file)).rejects.toThrow(/gif/i);
   });
@@ -95,6 +129,98 @@ describe("processAnimatedImage", () => {
     const big = new Uint8Array(21 * 1024 * 1024);
     const file = new File([big], "huge.gif", { type: "image/gif" });
     await expect(processAnimatedImage(file)).rejects.toThrow(/too large/i);
+  });
+
+  test("decodes every animated WebP frame and converts microsecond durations", async () => {
+    const webpBytes = makeWebPContainer(true, 2);
+    const file = new File([webpBytes], "rgb.webp", { type: "image/webp" });
+    const originalDecoder = (globalThis as unknown as { ImageDecoder?: unknown }).ImageDecoder;
+
+    class FakeImageDecoder {
+      tracks = { ready: Promise.resolve(), selectedTrack: { frameCount: 2 } };
+      async decode({ frameIndex }: { frameIndex: number }) {
+        const canvas = createCanvas(2, 2);
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = frameIndex === 0 ? "red" : "blue";
+        ctx.fillRect(0, 0, 2, 2);
+        return {
+          image: Object.assign(canvas, {
+            displayWidth: 2,
+            displayHeight: 2,
+            duration: frameIndex === 0 ? 50_000 : 120_000,
+            close() {},
+          }),
+        };
+      }
+      close() {}
+    }
+
+    Object.defineProperty(globalThis, "ImageDecoder", {
+      configurable: true,
+      value: FakeImageDecoder,
+    });
+    try {
+      const out = await processAnimatedImage(file);
+      expect(out.frames).toHaveLength(2);
+      for (const frame of out.frames) expect(frame.byteLength).toBe(RGB565_FRAME_BYTES);
+      // Center pixels retain each decoded frame's color after RGB565 conversion.
+      const centerOffset = (128 * 64 + 64) * 2;
+      expect((out.frames[0][centerOffset + 1] << 8) | out.frames[0][centerOffset]).toBe(0xf800);
+      expect((out.frames[1][centerOffset + 1] << 8) | out.frames[1][centerOffset]).toBe(0x001f);
+      expect(out.delaysMs).toEqual([50, 120]);
+    } finally {
+      Object.defineProperty(globalThis, "ImageDecoder", {
+        configurable: true,
+        value: originalDecoder,
+      });
+    }
+  });
+
+  test("reports a clear error when animated WebP decoding is unavailable", async () => {
+    const file = new File([makeWebPContainer(true, 1)], "animated.webp", {
+      type: "image/webp",
+    });
+    const originalDecoder = (globalThis as unknown as { ImageDecoder?: unknown }).ImageDecoder;
+    Object.defineProperty(globalThis, "ImageDecoder", { configurable: true, value: undefined });
+    try {
+      await expect(processAnimatedImage(file)).rejects.toThrow(/WebCodecs ImageDecoder/i);
+    } finally {
+      Object.defineProperty(globalThis, "ImageDecoder", {
+        configurable: true,
+        value: originalDecoder,
+      });
+    }
+  });
+
+  test("rejects animated WebP frame counts above the safety limit before decoding", async () => {
+    const file = new File([makeWebPContainer(true, 257)], "too-many.webp", {
+      type: "image/webp",
+    });
+    await expect(processAnimatedImage(file)).rejects.toThrow(/257 frames exceed max 256/i);
+  });
+});
+
+describe("WebP container inspection", () => {
+  test("distinguishes static and animated WebP and counts animation frames", async () => {
+    const animated = makeWebPContainer(true, 3);
+    expect(inspectWebP(animated.buffer)).toEqual({
+      animated: true,
+      width: 2,
+      height: 2,
+      frameCount: 3,
+    });
+    const animatedFile = new File([animated], "animated.webp", { type: "image/webp" });
+    expect(await isAnimatedWebP(animatedFile)).toBe(true);
+    const staticFile = new File([makeWebPContainer(false)], "still.webp", { type: "image/webp" });
+    expect(await isAnimatedWebP(staticFile)).toBe(false);
+  });
+
+  test("rejects invalid and truncated WebP containers", () => {
+    expect(() => inspectWebP(new ArrayBuffer(12))).toThrow(/invalid WebP/i);
+
+    const truncated = makeWebPContainer(true, 1);
+    const truncatedView = truncated.slice(0, truncated.length - 1);
+    expect(() => inspectWebP(truncatedView.buffer)).toThrow(/truncated WebP/i);
   });
 });
 

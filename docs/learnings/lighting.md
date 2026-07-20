@@ -43,11 +43,7 @@ packet. Byte 8 of the data packet is:
 
 The unnumbered data packet must not receive a GET-feature handshake.
 
-## Presets and preview
-
-Presets are versioned, browser-local `LightingConfig` objects supporting save,
-load, rename, delete, and apply. Applying a preset runs the same four-report
-transaction as direct controls.
+## Preview
 
 The virtual keyboard previews whole-board behavior only. It reacts to color,
 brightness, Off, Rainbow, Breath, and representative animation classes without

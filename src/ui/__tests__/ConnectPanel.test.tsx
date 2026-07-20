@@ -39,9 +39,7 @@ describe("ConnectPanel", () => {
     await ctrl.connect();
     const { getByRole } = renderPanel(ctrl);
 
-    await waitFor(() =>
-      expect(getByRole("status").textContent).toContain("Awake and responding"),
-    );
+    await waitFor(() => expect(getByRole("status").textContent).toContain("Awake and responding"));
   });
 
   test("warns when a connected keyboard does not answer the health check", async () => {

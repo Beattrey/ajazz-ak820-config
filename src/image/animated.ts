@@ -110,9 +110,85 @@ const MAX_GIF_DIMENSION = 2048;
 const MAX_GIF_FRAMES = 256;
 const MAX_PATCH_PIXELS = 50_000_000;
 
+type WebPInfo = {
+  animated: boolean;
+  width?: number;
+  height?: number;
+  frameCount: number;
+};
+
+type DecodedWebPFrame = {
+  image: CanvasImageSource & {
+    displayWidth: number;
+    displayHeight: number;
+    duration: number | null;
+    close(): void;
+  };
+};
+
+type BrowserImageDecoder = {
+  tracks: {
+    ready: Promise<void>;
+    selectedTrack: { frameCount: number } | null;
+  };
+  decode(options: { frameIndex: number; completeFramesOnly: boolean }): Promise<DecodedWebPFrame>;
+  close(): void;
+};
+
+type BrowserImageDecoderConstructor = new (options: {
+  data: ArrayBuffer;
+  type: string;
+}) => BrowserImageDecoder;
+
+/** Inspect the WebP RIFF container without decoding its potentially large pixels. */
+export function inspectWebP(data: ArrayBuffer): WebPInfo {
+  const bytes = new Uint8Array(data);
+  const view = new DataView(data);
+  const fourCc = (offset: number) => String.fromCharCode(...bytes.subarray(offset, offset + 4));
+  if (bytes.length < 12 || fourCc(0) !== "RIFF" || fourCc(8) !== "WEBP") {
+    throw new Error("processAnimatedImage: invalid WebP container");
+  }
+
+  let animated = false;
+  let frameCount = 0;
+  let width: number | undefined;
+  let height: number | undefined;
+  for (let offset = 12; offset + 8 <= bytes.length; ) {
+    const kind = fourCc(offset);
+    const size = view.getUint32(offset + 4, true);
+    const payload = offset + 8;
+    if (payload + size > bytes.length) {
+      throw new Error("processAnimatedImage: truncated WebP chunk");
+    }
+    if (kind === "VP8X" && size >= 10) {
+      animated ||= (bytes[payload] & 0x02) !== 0;
+      width = 1 + bytes[payload + 4] + (bytes[payload + 5] << 8) + (bytes[payload + 6] << 16);
+      height =
+        1 + bytes[payload + 7] + (bytes[payload + 8] << 8) + (bytes[payload + 9] << 16);
+    } else if (kind === "ANIM") {
+      animated = true;
+    } else if (kind === "ANMF") {
+      animated = true;
+      frameCount++;
+    }
+    offset = payload + size + (size & 1);
+  }
+  return { animated, width, height, frameCount };
+}
+
+export async function isAnimatedWebP(file: File): Promise<boolean> {
+  if (file.type !== "image/webp") return false;
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error(
+      `processAnimatedImage: file too large (${file.size} bytes, max ${MAX_FILE_SIZE})`,
+    );
+  }
+  return inspectWebP(await file.arrayBuffer()).animated;
+}
+
 export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
-  if (file.type !== "image/gif") {
-    throw new Error(`processAnimatedImage: expected image/gif, got ${file.type}`);
+  if (file.type !== "image/gif" && file.type !== "image/webp") {
+    throw new Error(`processAnimatedImage: expected image/gif or image/webp, got ${file.type}`);
   }
   if (file.size > MAX_FILE_SIZE) {
     throw new Error(
@@ -121,6 +197,8 @@ export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
   }
 
   const arrayBuffer = await file.arrayBuffer();
+  if (file.type === "image/webp") return processAnimatedWebP(arrayBuffer);
+
   const gif = parseGIF(arrayBuffer);
 
   if (gif.lsd.width > MAX_GIF_DIMENSION || gif.lsd.height > MAX_GIF_DIMENSION) {
@@ -188,5 +266,68 @@ export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
     delaysMs.push(delayMs);
   }
 
+  return { frames, delaysMs };
+}
+
+async function processAnimatedWebP(arrayBuffer: ArrayBuffer): Promise<AnimatedImage> {
+  const info = inspectWebP(arrayBuffer);
+  if (!info.animated) throw new Error("processAnimatedImage: WebP is not animated");
+  if (
+    (info.width !== undefined && info.width > MAX_GIF_DIMENSION) ||
+    (info.height !== undefined && info.height > MAX_GIF_DIMENSION)
+  ) {
+    throw new Error(
+      `processAnimatedImage: canvas ${info.width}x${info.height} exceeds max ${MAX_GIF_DIMENSION}`,
+    );
+  }
+  if (info.frameCount === 0) throw new Error("processAnimatedImage: WebP has no frames");
+  if (info.frameCount > MAX_GIF_FRAMES) {
+    throw new Error(`processAnimatedImage: ${info.frameCount} frames exceed max ${MAX_GIF_FRAMES}`);
+  }
+
+  const ImageDecoderClass = (globalThis as unknown as { ImageDecoder?: BrowserImageDecoderConstructor })
+    .ImageDecoder;
+  if (!ImageDecoderClass) {
+    throw new Error("Animated WebP requires a browser with the WebCodecs ImageDecoder API");
+  }
+
+  const decoder = new ImageDecoderClass({ data: arrayBuffer, type: "image/webp" });
+  const frames: Uint8Array[] = [];
+  const delaysMs: number[] = [];
+  try {
+    await decoder.tracks.ready;
+    const decoderFrameCount = decoder.tracks.selectedTrack?.frameCount ?? 0;
+    if (decoderFrameCount === 0) throw new Error("processAnimatedImage: WebP has no frames");
+    if (decoderFrameCount > MAX_GIF_FRAMES) {
+      throw new Error(
+        `processAnimatedImage: ${decoderFrameCount} frames exceed max ${MAX_GIF_FRAMES}`,
+      );
+    }
+
+    for (let frameIndex = 0; frameIndex < decoderFrameCount; frameIndex++) {
+      const { image } = await decoder.decode({ frameIndex, completeFramesOnly: true });
+      try {
+        const width = image.displayWidth;
+        const height = image.displayHeight;
+        if (width > MAX_GIF_DIMENSION || height > MAX_GIF_DIMENSION) {
+          throw new Error(
+            `processAnimatedImage: decoded frame ${width}x${height} exceeds max ${MAX_GIF_DIMENSION}`,
+          );
+        }
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D | null;
+        if (!ctx) throw new Error("processAnimatedImage: 2D context unavailable");
+        ctx.drawImage(image, 0, 0);
+        const rgba = ctx.getImageData(0, 0, width, height).data;
+        const resized = containResizeRgba(rgba, width, height, SCREEN_WIDTH, SCREEN_HEIGHT);
+        frames.push(rgb888ToRgb565(resized, SCREEN_WIDTH, SCREEN_HEIGHT, "le"));
+        delaysMs.push(image.duration && image.duration > 0 ? image.duration / 1000 : 100);
+      } finally {
+        image.close();
+      }
+    }
+  } finally {
+    decoder.close();
+  }
   return { frames, delaysMs };
 }

@@ -29,7 +29,6 @@ in `docs/manual-test.md` and require wired USB-C mode.
 - Apply Static red and confirm a steady whole-board result.
 - Apply Off, Spectrum/Rainbow, and an animated directional mode.
 - Confirm Up and Down match physical movement.
-- Save, reload, and reapply a local preset.
 - Confirm lighting across reconnect and power cycle.
 - Confirm one-minute sleep and wake behavior.
 - Re-run time sync and static/animated TFT uploads for shared-interface regressions.

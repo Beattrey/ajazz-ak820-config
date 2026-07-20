@@ -11,8 +11,8 @@ current architecture and macOS compatibility.
   stack. Do not introduce another programming language or a native companion
   application.
 - Keyboard communication must continue through browser WebHID APIs.
-- Image processing, configuration, and preset storage must remain local to the
-  browser. No server is required.
+- Image processing and configuration must remain local to the browser. No
+  server is required.
 - Features must not depend on the Windows-only AJAZZ driver at runtime.
 - Reverse-engineered protocol details may be researched from other projects,
   but their Rust, C++, or Python implementations must be reimplemented and
@@ -55,14 +55,6 @@ current architecture and macOS compatibility.
 - [x] Disable controls while a lighting transaction is running.
 - [x] Display validation, disconnection, and transfer failures in the panel.
 - [x] Add React component tests for mode-dependent controls and submission.
-
-### Browser presets
-
-- [x] Allow a user to name and save a lighting configuration.
-- [x] Store presets locally with the browser `localStorage` API.
-- [x] Allow saved presets to be applied, renamed, and deleted.
-- [x] Version and validate stored preset data before loading it.
-- [x] Keep presets origin-local and make no network requests.
 
 ## Lighting sleep timeout
 
@@ -128,12 +120,11 @@ confirmed independently from ordinary key remapping.
 1. RGB protocol builders and tests.
 2. Minimal RGB panel: effect, color, rainbow, and Apply.
 3. Brightness, speed, and mode-aware direction controls.
-4. Browser-local lighting presets.
-5. Lighting sleep timeout.
-6. Shared device-operation safety and recovery improvements.
-7. Key-remapping protocol research and single-key proof of concept.
-8. Layout-aware remapping interface.
-9. Macro protocol research and, if confirmed safe, a macro interface.
+4. Lighting sleep timeout.
+5. Shared device-operation safety and recovery improvements.
+6. Key-remapping protocol research and single-key proof of concept.
+7. Layout-aware remapping interface.
+8. Macro protocol research and, if confirmed safe, a macro interface.
 
 Each delivery must pass TypeScript checks, unit/component tests, a production
 Vite build, and the relevant real-keyboard checks in `manual-test.md` using a

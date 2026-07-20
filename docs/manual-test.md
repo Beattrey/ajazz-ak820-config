@@ -54,6 +54,9 @@ TFT's RGB565 format cannot carry an alpha channel.
 
 Pass criteria: TFT animates with timings approximately matching the GIF.
 
+Repeat with an animated WebP. It should also upload as multiple frames with
+approximately matching timings; a static WebP should remain a static upload.
+
 ### T6 — Disconnect mid-upload
 
 1. Start uploading a GIF (T5).
@@ -95,23 +98,14 @@ Pass criteria: every direction matches its label. If Up and Down are reversed,
 record it before changing the protocol mapping because the two reference
 implementations disagree on those byte values.
 
-### T11 — Presets
-
-1. Name and save the current lighting configuration.
-2. Reload the page and reconnect.
-3. Select and apply the preset, rename it, then delete it.
-
-Pass criteria: the preset survives reload, applies correctly, and rename/delete
-are persisted without any network request.
-
-### T12 — Lighting sleep timeout
+### T11 — Lighting sleep timeout
 
 1. Select **1 minute** and click **Apply sleep timeout**.
 2. Leave the keyboard idle without pressing keys.
 
 Pass criteria: keyboard lighting turns off after approximately one minute.
 
-### T13 — Shared operation safety
+### T12 — Shared operation safety
 
 1. Start a large animated image upload.
 2. While it runs, inspect Time, Lighting, Sleep, and connection controls.

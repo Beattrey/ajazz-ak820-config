@@ -34,7 +34,9 @@ export function ConnectPanel() {
             <small>Last response {lastResponseAt.toLocaleTimeString()}</small>
           )}
           {health === "unresponsive" && (
-            <small>Press a key to wake the keyboard. The website will check again automatically.</small>
+            <small>
+              Press a key to wake the keyboard. The website will check again automatically.
+            </small>
           )}
         </span>
       </div>
