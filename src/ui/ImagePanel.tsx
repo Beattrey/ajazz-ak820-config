@@ -8,7 +8,15 @@ import { logVerbose } from "../log";
 
 type Prepared =
   | { kind: "static"; buffer: Uint8Array; sourceW: number; sourceH: number; mode: ResizeMode }
-  | { kind: "animated"; frames: Uint8Array[]; delaysMs: number[] };
+  | {
+      kind: "animated";
+      frames: Uint8Array[];
+      delaysMs: number[];
+      sourceW: number;
+      sourceH: number;
+      mode: ResizeMode;
+      fileName: string;
+    };
 
 export function ImagePanel({ controller }: { controller: DeviceController }) {
   const [connected, setConnected] = useState(controller.isConnected());
@@ -64,9 +72,19 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
     drawPreview(canvasRef.current, res.rgb565);
   };
 
-  const prepareGif = async (file: File) => {
-    const anim = await processAnimatedImage(file);
-    setPrepared({ kind: "animated", frames: anim.frames, delaysMs: anim.delaysMs });
+  const prepareGif = async (file: File, mode: ResizeMode) => {
+    const anim = await processAnimatedImage(file, mode);
+    setPrepared({
+      kind: "animated",
+      frames: anim.frames,
+      delaysMs: anim.delaysMs,
+      sourceW: anim.sourceWidth,
+      sourceH: anim.sourceHeight,
+      mode,
+      fileName: file.name,
+    });
+    // The animation effect takes over drawing once state updates; draw frame 0
+    // immediately to avoid a blank flash.
     drawPreview(canvasRef.current, anim.frames[0]);
   };
 
@@ -76,7 +94,7 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
     setSelectedFile(file);
     try {
       if (file.type === "image/gif") {
-        await prepareGif(file);
+        await prepareGif(file, resizeMode);
       } else {
         await prepareStatic(file, resizeMode);
       }
@@ -88,9 +106,13 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
 
   const onModeChange = async (mode: ResizeMode) => {
     setResizeMode(mode);
-    if (busy || !selectedFile || selectedFile.type === "image/gif") return;
+    if (busy || !selectedFile) return;
     try {
-      await prepareStatic(selectedFile, mode);
+      if (selectedFile.type === "image/gif") {
+        await prepareGif(selectedFile, mode);
+      } else {
+        await prepareStatic(selectedFile, mode);
+      }
     } catch (e) {
       setPrepared(null);
       setStatus(e instanceof Error ? e.message : "Failed to process file");
@@ -117,6 +139,10 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
     setBusy(true);
     setStatus("Uploading GIF…");
     try {
+      logVerbose(
+        `[Anim] source ${prepared.sourceW}x${prepared.sourceH}, mode ${prepared.mode}, ` +
+          `${prepared.frames.length} frames`,
+      );
       await uploadAnimatedImage(controller, prepared.frames, prepared.delaysMs, setProgress);
       setStatus("GIF uploaded");
     } catch (e) {
@@ -174,6 +200,18 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
             <> — source {prepared.sourceW}×{prepared.sourceH}, mode {prepared.mode}</>
           )}
         </p>
+        {prepared?.kind === "animated" && (
+          <div style={{ margin: "0.25rem 0 0", fontSize: "0.9em" }}>
+            <p style={{ margin: 0 }}>GIF: {prepared.fileName}</p>
+            <p style={{ margin: 0 }}>
+              Source {prepared.sourceW}×{prepared.sourceH}, mode {prepared.mode}
+            </p>
+            <p style={{ margin: 0 }}>
+              Frames to send: {prepared.frames.length} — delays (ms):{" "}
+              {summarizeDelays(prepared.delaysMs)}
+            </p>
+          </div>
+        )}
       </div>
       <div style={{ marginTop: "0.75rem" }}>
         <button disabled={!connected || busy || !staticValid} onClick={onUpload}>
@@ -189,6 +227,16 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
       {status && <p>{status}</p>}
     </section>
   );
+}
+
+// Compact per-frame delay summary: lists them if few, else min/avg/max.
+function summarizeDelays(delaysMs: readonly number[]): string {
+  if (delaysMs.length === 0) return "—";
+  if (delaysMs.length <= 6) return delaysMs.join(", ");
+  const min = Math.min(...delaysMs);
+  const max = Math.max(...delaysMs);
+  const avg = Math.round(delaysMs.reduce((a, b) => a + b, 0) / delaysMs.length);
+  return `${delaysMs.length} frames, min ${min} / avg ${avg} / max ${max}`;
 }
 
 function drawPreview(canvas: HTMLCanvasElement | null, rgb565: Uint8Array) {

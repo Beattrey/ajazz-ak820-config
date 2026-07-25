@@ -33,6 +33,29 @@ function makeThreeFrameGif(): Uint8Array {
   return new Uint8Array(encoder.out.getData());
 }
 
+// Solid-red GIF of the given size and frame count.
+function makeSolidRedGif(width: number, height: number, frameCount: number): Uint8Array {
+  const encoder = new GIFEncoder(width, height);
+  encoder.start();
+  encoder.setRepeat(0);
+  encoder.setDelay(100);
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgb(255,0,0)";
+  for (let i = 0; i < frameCount; i++) {
+    ctx.fillRect(0, 0, width, height);
+    encoder.addFrame(ctx);
+  }
+  encoder.finish();
+  return new Uint8Array(encoder.out.getData());
+}
+
+// Read RGB565 little-endian value at pixel (x, y) of a 128×128 frame.
+function pixelAt(frame: Uint8Array, x: number, y: number): number {
+  const i = (y * 128 + x) * 2;
+  return frame[i] | (frame[i + 1] << 8);
+}
+
 describe("processAnimatedImage", () => {
   test("3-frame R/G/B GIF → 3 frames, each 32768 bytes, ~100 ms delays", async () => {
     const gifBytes = makeThreeFrameGif();
@@ -84,6 +107,40 @@ describe("processAnimatedImage", () => {
     expect(c1.g).toBeGreaterThan(c1.b);
     expect(c2.b).toBeGreaterThan(c2.r);
     expect(c2.b).toBeGreaterThan(c2.g);
+  });
+
+  test("returns source dimensions and mode (default cover)", async () => {
+    const gifBytes = makeThreeFrameGif();
+    const file = new File([gifBytes], "rgb.gif", { type: "image/gif" });
+
+    const out = await processAnimatedImage(file);
+
+    expect(out.sourceWidth).toBe(200);
+    expect(out.sourceHeight).toBe(100);
+    expect(out.mode).toBe("cover");
+  });
+
+  test("cover fills the frame (no black bars) for a horizontal GIF", async () => {
+    const file = new File([makeSolidRedGif(200, 100, 2)], "h.gif", { type: "image/gif" });
+    const out = await processAnimatedImage(file, "cover");
+    // Top and bottom rows are red (image covers the whole 128×128).
+    expect(pixelAt(out.frames[0], 64, 0)).toBe(0xf800);
+    expect(pixelAt(out.frames[0], 64, 127)).toBe(0xf800);
+  });
+
+  test("contain letterboxes a horizontal GIF with black top/bottom bars", async () => {
+    // 200x100 → contain scale = min(0.64, 1.28) = 0.64 → 128x64, dy=32.
+    const file = new File([makeSolidRedGif(200, 100, 2)], "h.gif", { type: "image/gif" });
+    const out = await processAnimatedImage(file, "contain");
+    expect(out.mode).toBe("contain");
+    expect(pixelAt(out.frames[0], 64, 0)).toBe(0x0000); // top bar black
+    expect(pixelAt(out.frames[0], 64, 127)).toBe(0x0000); // bottom bar black
+    expect(pixelAt(out.frames[0], 64, 64)).toBe(0xf800); // centre red
+  });
+
+  test("rejects GIFs with more than 20 frames", async () => {
+    const file = new File([makeSolidRedGif(64, 64, 21)], "many.gif", { type: "image/gif" });
+    await expect(processAnimatedImage(file)).rejects.toThrow(/frames exceed max 20/i);
   });
 
   test("rejects non-GIF MIME types", async () => {
