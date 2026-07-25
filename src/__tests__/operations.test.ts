@@ -63,6 +63,19 @@ describe("uploadStaticImage", () => {
       uploadStaticImage(ctrl, new Uint8Array(100), () => {}),
     ).rejects.toThrow(/32768/);
   });
+
+  test("fail-fast: a missing ACK aborts — no further chunk, no FINISH", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+    ctrl.waitForDataInputReport = async () => null; // force ACK timeout
+    await expect(
+      uploadStaticImage(ctrl, new Uint8Array(RGB565_FRAME_BYTES), () => {}),
+    ).rejects.toThrow(/aborted/i);
+    // START + CFG were sent, then exactly ONE chunk, then abort.
+    expect(ctrl.sent.filter((s) => s.kind === "output")).toHaveLength(1);
+    // No FINISH (0xF0) was ever sent.
+    expect(ctrl.sent.some((s) => s.kind === "feature" && s.bytes[0] === 0xf0)).toBe(false);
+  });
 });
 
 describe("uploadAnimatedImage (AKS075 path)", () => {
@@ -97,5 +110,20 @@ describe("uploadAnimatedImage (AKS075 path)", () => {
     await expect(
       uploadAnimatedImage(ctrl, frames, [100, 200], () => {}),
     ).rejects.toThrow(/delay/i);
+  });
+
+  test("fail-fast: a missing ACK aborts — no further chunk, no SAVE", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+    ctrl.waitForDataInputReport = async () => null; // force ACK timeout
+    const frames = [new Uint8Array(RGB565_FRAME_BYTES), new Uint8Array(RGB565_FRAME_BYTES)];
+    await expect(
+      uploadAnimatedImage(ctrl, frames, [100, 100], () => {}),
+    ).rejects.toThrow(/aborted/i);
+    // Exactly one chunk was sent before the abort.
+    expect(ctrl.sent.filter((s) => s.kind === "output")).toHaveLength(1);
+    // No SAVE (0x02) and no FINISH (0xF0) were sent.
+    expect(ctrl.sent.some((s) => s.kind === "feature" && s.bytes[0] === 0x02)).toBe(false);
+    expect(ctrl.sent.some((s) => s.bytes[0] === 0xf0)).toBe(false);
   });
 });
