@@ -31,10 +31,42 @@ Not implemented:
 - RGB lighting profiles
 - Macro recording
 
+## Tested hardware
+
+This support was **physically tested** on a real unit:
+
+- **Keyboard**: Ajazz AK820 Pro (USB product string `AK820`)
+- **USB VID / PID**: `0x0C45` / `0x800A`
+- **Environment**: macOS + Chromium (WebHID)
+
+`0x800A` is a newer hardware/firmware revision that enumerates with a different
+product ID than the previously known `0x8009` while exposing the same vendor HID
+interfaces. It was added to the device picker so Chrome offers it.
+
+**Hardware-verified on this unit** (observed directly over WebHID):
+
+| Item | Value |
+|---|---|
+| Control interface usage page | `0xFF13`, 64-byte reports, report ID 0 |
+| Data interface usage page | `0xFF68`, 4096-byte output report, report ID 0 |
+| Per-chunk ACK | `01 5A 02 00 00 00 00 00 …` |
+| Static upload | 128×128 RGB565 LE, `IMAGE_CFG` sub `0x02`, 9×4096-byte chunks, per-chunk ACK, `FINISH 0xF0`; image persists across power-cycle |
+| Animated upload | 256-byte frame header, RGB565 LE frames, `IMAGE_CFG` sub `0x03`, 4096-byte chunks, per-chunk ACK, `SAVE 0x02` (no FINISH); a real 18-frame GIF (145 chunks) persisted across power-cycle |
+
+**Revision-specific**: on this unit, `Fn + Del` toggles the TFT between the
+default screen and the custom image/GIF. This shortcut may differ by hardware
+revision or manual.
+
+The byte-level protocol itself is **derived from the reference implementations**
+cited in [`docs/protocol-notes.md`](docs/protocol-notes.md) (gohv, aks075-linux,
+TaxMachine); this contribution verifies it against the `0x800A` revision and adds
+device-picker support, safer ACK handling, and image/GIF preprocessing. Behaviour
+on other revisions or PIDs is **not** claimed as tested.
+
 ## Limits
 
 - Static image: PNG / JPEG / WebP, up to **10 MB**.
-- Animated GIF: up to **20 MB**, max **2048 × 2048 px**, max **256 frames**, total decoded patch pixels ≤ 50 M.
+- Animated GIF: up to **20 MB**, max **2048 × 2048 px**, max **20 frames**, total decoded patch pixels ≤ 50 M.
 - All images are center-cropped and downscaled to 128 × 128 (the TFT's native resolution).
 
 ## Security

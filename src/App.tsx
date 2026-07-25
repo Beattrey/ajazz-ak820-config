@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { UnsupportedBrowser } from "./ui/UnsupportedBrowser";
 import { ConnectPanel } from "./ui/ConnectPanel";
+import { DiagnosticPanel } from "./ui/DiagnosticPanel";
 import { TimeSyncPanel } from "./ui/TimeSyncPanel";
 import { ImagePanel } from "./ui/ImagePanel";
 import { WebHIDDeviceController } from "./device/webhid-controller";
@@ -20,6 +21,7 @@ export default function App() {
       <ConnectPanel controller={controller} />
       <TimeSyncPanel controller={controller} />
       <ImagePanel controller={controller} />
+      <DiagnosticPanel controller={controller} />
     </div>
   );
 }

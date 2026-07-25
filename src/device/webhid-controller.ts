@@ -7,6 +7,7 @@ import {
 } from "../protocol/constants";
 import { DeviceFailure } from "./errors";
 import type { DeviceController } from "./types";
+import { logInfo, logVerbose, logError } from "../log";
 
 function findByUsagePage(devices: readonly HIDDevice[], usagePage: number): HIDDevice | undefined {
   return devices.find((d) =>
@@ -67,25 +68,55 @@ export class WebHIDDeviceController implements DeviceController {
       throw new DeviceFailure({ kind: "no-device-selected" });
     }
 
+    // Verbose diagnostics: dump every HID device the user selected, before we
+    // try to match. Pure inspection of descriptors already provided by the
+    // browser — no report is sent to the keyboard here. Enable "Verbose
+    // protocol logging" in Advanced / Diagnostics to see this.
+    logVerbose(`[WebHID] requestDevice returned ${devices.length} HID device(s)`);
+    for (const [i, d] of devices.entries()) {
+      const vid = `0x${d.vendorId.toString(16).padStart(4, "0")}`;
+      const pid = `0x${d.productId.toString(16).padStart(4, "0")}`;
+      logVerbose(`[WebHID] device[${i}] "${d.productName}" VID=${vid} PID=${pid} opened=${d.opened}`);
+      for (const [ci, c] of d.collections.entries()) {
+        const up = `0x${(c.usagePage ?? 0).toString(16).padStart(4, "0")}`;
+        const us = `0x${(c.usage ?? 0).toString(16).padStart(4, "0")}`;
+        const inIds = (c.inputReports ?? []).map((r) => r.reportId);
+        const outIds = (c.outputReports ?? []).map((r) => r.reportId);
+        const featIds = (c.featureReports ?? []).map((r) => r.reportId);
+        logVerbose(
+          `[WebHID]   collection[${ci}] usagePage=${up} usage=${us} ` +
+            `input=[${inIds}] output=[${outIds}] feature=[${featIds}]`,
+        );
+      }
+    }
+
     const control = findByUsagePage(devices, CONTROL_USAGE_PAGE);
     const data = findByUsagePage(devices, DATA_USAGE_PAGE);
     if (!control || !data) {
       throw new DeviceFailure({ kind: "no-device-selected" });
     }
 
-    if (!control.opened) await control.open();
-    if (!data.opened) await data.open();
+    try {
+      if (!control.opened) await control.open();
+    } catch (cause) {
+      logError("[WebHID] control interface open failed:", cause);
+      throw cause;
+    }
+    try {
+      if (!data.opened) await data.open();
+    } catch (cause) {
+      logError("[WebHID] data interface open failed:", cause);
+      throw cause;
+    }
 
     this.controlDevice = control;
     this.dataDevice = data;
 
-    // Diagnostic dump — surfaces what the keyboard's HID descriptor really
-    // declares for the data interface. Helps identify the actual max output
-    // report size, the report IDs, etc. Look in DevTools Console.
-    // eslint-disable-next-line no-console
-    console.log("[WebHID] control collections:", JSON.stringify(control.collections, null, 2));
-    // eslint-disable-next-line no-console
-    console.log("[WebHID] data collections:", JSON.stringify(data.collections, null, 2));
+    logInfo("[WebHID] device connected (control 0xFF13 + data 0xFF68 open)");
+    // Full descriptor dump — surfaces the declared max output report size,
+    // report IDs, etc. Verbose only.
+    logVerbose("[WebHID] control collections:", JSON.stringify(control.collections, null, 2));
+    logVerbose("[WebHID] data collections:", JSON.stringify(data.collections, null, 2));
 
     this.boundDataInputListener = (event: HIDInputReportEvent) => {
       const waiter = this.dataInputWaiters.shift();
@@ -200,6 +231,24 @@ export class WebHIDDeviceController implements DeviceController {
       // errors and continue. Treat any failure here as "no data."
       return null;
     }
+  }
+
+  /**
+   * READ-ONLY diagnostic GET_REPORT on the control interface.
+   *
+   * Unlike `receiveFeatureReport`, this does NOT swallow errors — it lets a
+   * STALL/failure propagate so the diagnostic UI can distinguish "device
+   * returned no data" from "device refused the read". This issues a single
+   * USB GET_REPORT (control IN) transfer: it only READS the current value of
+   * the feature report and cannot modify device state, flash, or firmware.
+   * It never sends a feature/output report.
+   */
+  async diagnosticReadFeatureReport(reportId: number): Promise<DataView> {
+    const device = this.controlDevice;
+    if (!device || !device.opened) {
+      throw new DeviceFailure({ kind: "device-disconnected" });
+    }
+    return await device.receiveFeatureReport(reportId);
   }
 
   onDisconnect(handler: () => void): () => void {

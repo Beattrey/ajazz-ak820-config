@@ -1,19 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeviceController } from "../device/types";
-import { processStaticImage } from "../image/static";
+import { processStaticImage, type ResizeMode } from "../image/static";
 import { processAnimatedImage } from "../image/animated";
 import { uploadStaticImage, uploadAnimatedImage } from "../operations";
-import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../protocol/constants";
+import { SCREEN_WIDTH, SCREEN_HEIGHT, RGB565_FRAME_BYTES } from "../protocol/constants";
+import { logVerbose } from "../log";
 
 type Prepared =
-  | { kind: "static"; buffer: Uint8Array }
-  | { kind: "animated"; frames: Uint8Array[]; delaysMs: number[] };
+  | { kind: "static"; buffer: Uint8Array; sourceW: number; sourceH: number; mode: ResizeMode }
+  | {
+      kind: "animated";
+      frames: Uint8Array[];
+      delaysMs: number[];
+      sourceW: number;
+      sourceH: number;
+      mode: ResizeMode;
+      fileName: string;
+    };
 
 export function ImagePanel({ controller }: { controller: DeviceController }) {
   const [connected, setConnected] = useState(controller.isConnected());
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
+  // Guards against double-click / concurrent uploads. Disables every upload
+  // control while a transfer is in flight. No automatic retry / recovery.
+  const [busy, setBusy] = useState(false);
+  const [resizeMode, setResizeMode] = useState<ResizeMode>("cover");
+  // Keep the raw file so changing the resize mode can re-process it locally.
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => controller.onDisconnect(() => setConnected(false)), [controller]);
@@ -22,36 +37,118 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
     return () => clearInterval(id);
   }, [controller]);
 
+  const staticValid =
+    prepared?.kind === "static" && prepared.buffer.byteLength === RGB565_FRAME_BYTES;
+  const gifValid =
+    prepared?.kind === "animated" &&
+    prepared.frames.length > 0 &&
+    prepared.frames.every((f) => f.byteLength === RGB565_FRAME_BYTES);
+
+  // Animate the GIF preview: cycle through frames honoring per-frame delays.
+  useEffect(() => {
+    if (prepared?.kind !== "animated") return;
+    const { frames, delaysMs } = prepared;
+    let idx = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      drawPreview(canvasRef.current, frames[idx]);
+      const d = Math.max(20, delaysMs[idx] || 100);
+      idx = (idx + 1) % frames.length;
+      timer = setTimeout(tick, d);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [prepared]);
+
+  const prepareStatic = async (file: File, mode: ResizeMode) => {
+    const res = await processStaticImage(file, mode);
+    setPrepared({
+      kind: "static",
+      buffer: res.rgb565,
+      sourceW: res.sourceWidth,
+      sourceH: res.sourceHeight,
+      mode,
+    });
+    drawPreview(canvasRef.current, res.rgb565);
+  };
+
+  const prepareGif = async (file: File, mode: ResizeMode) => {
+    const anim = await processAnimatedImage(file, mode);
+    setPrepared({
+      kind: "animated",
+      frames: anim.frames,
+      delaysMs: anim.delaysMs,
+      sourceW: anim.sourceWidth,
+      sourceH: anim.sourceHeight,
+      mode,
+      fileName: file.name,
+    });
+    // The animation effect takes over drawing once state updates; draw frame 0
+    // immediately to avoid a blank flash.
+    drawPreview(canvasRef.current, anim.frames[0]);
+  };
+
   const onFile = async (file: File) => {
     setStatus(null);
     setProgress(0);
+    setSelectedFile(file);
     try {
       if (file.type === "image/gif") {
-        const anim = await processAnimatedImage(file);
-        setPrepared({ kind: "animated", frames: anim.frames, delaysMs: anim.delaysMs });
-        drawPreview(canvasRef.current, anim.frames[0]);
+        await prepareGif(file, resizeMode);
       } else {
-        const buf = await processStaticImage(file);
-        setPrepared({ kind: "static", buffer: buf });
-        drawPreview(canvasRef.current, buf);
+        await prepareStatic(file, resizeMode);
       }
     } catch (e) {
+      setPrepared(null);
+      setStatus(e instanceof Error ? e.message : "Failed to process file");
+    }
+  };
+
+  const onModeChange = async (mode: ResizeMode) => {
+    setResizeMode(mode);
+    if (busy || !selectedFile) return;
+    try {
+      if (selectedFile.type === "image/gif") {
+        await prepareGif(selectedFile, mode);
+      } else {
+        await prepareStatic(selectedFile, mode);
+      }
+    } catch (e) {
+      setPrepared(null);
       setStatus(e instanceof Error ? e.message : "Failed to process file");
     }
   };
 
   const onUpload = async () => {
-    if (!prepared) return;
+    if (!prepared || prepared.kind !== "static" || busy || !staticValid) return;
+    setBusy(true);
     setStatus("Uploading…");
     try {
-      if (prepared.kind === "static") {
-        await uploadStaticImage(controller, prepared.buffer, setProgress);
-      } else {
-        await uploadAnimatedImage(controller, prepared.frames, prepared.delaysMs, setProgress);
-      }
+      logVerbose(`[Image] source ${prepared.sourceW}x${prepared.sourceH}, mode ${prepared.mode}`);
+      await uploadStaticImage(controller, prepared.buffer, setProgress);
       setStatus("Uploaded");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onUploadGif = async () => {
+    if (!prepared || prepared.kind !== "animated" || busy || !gifValid) return;
+    setBusy(true);
+    setStatus("Uploading GIF…");
+    try {
+      logVerbose(
+        `[Anim] source ${prepared.sourceW}x${prepared.sourceH}, mode ${prepared.mode}, ` +
+          `${prepared.frames.length} frames`,
+      );
+      await uploadAnimatedImage(controller, prepared.frames, prepared.delaysMs, setProgress);
+      setStatus("GIF uploaded");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -61,9 +158,30 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
       <input
         type="file"
         accept="image/png,image/jpeg,image/webp,image/gif"
-        disabled={!connected}
+        disabled={!connected || busy}
         onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
       />
+      <fieldset style={{ marginTop: "0.75rem", border: "1px solid #333" }} disabled={busy}>
+        <legend>Aspect ratio</legend>
+        <label style={{ marginRight: "1rem" }}>
+          <input
+            type="radio"
+            name="resizeMode"
+            checked={resizeMode === "cover"}
+            onChange={() => onModeChange("cover")}
+          />{" "}
+          Crop / Cover (default)
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="resizeMode"
+            checked={resizeMode === "contain"}
+            onChange={() => onModeChange("contain")}
+          />{" "}
+          Fit / Contain (black bars)
+        </label>
+      </fieldset>
       <div style={{ marginTop: "0.75rem" }}>
         <canvas
           ref={canvasRef}
@@ -76,10 +194,31 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
             border: "1px solid #333",
           }}
         />
+        <p style={{ margin: "0.25rem 0 0" }}>
+          Final resolution: {SCREEN_WIDTH}×{SCREEN_HEIGHT}
+          {prepared?.kind === "static" && (
+            <> — source {prepared.sourceW}×{prepared.sourceH}, mode {prepared.mode}</>
+          )}
+        </p>
+        {prepared?.kind === "animated" && (
+          <div style={{ margin: "0.25rem 0 0", fontSize: "0.9em" }}>
+            <p style={{ margin: 0 }}>GIF: {prepared.fileName}</p>
+            <p style={{ margin: 0 }}>
+              Source {prepared.sourceW}×{prepared.sourceH}, mode {prepared.mode}
+            </p>
+            <p style={{ margin: 0 }}>
+              Frames to send: {prepared.frames.length} — delays (ms):{" "}
+              {summarizeDelays(prepared.delaysMs)}
+            </p>
+          </div>
+        )}
       </div>
       <div style={{ marginTop: "0.75rem" }}>
-        <button disabled={!connected || !prepared} onClick={onUpload}>
-          Upload to keyboard
+        <button disabled={!connected || busy || !staticValid} onClick={onUpload}>
+          Upload selected image
+        </button>{" "}
+        <button disabled={!connected || busy || !gifValid} onClick={onUploadGif}>
+          Upload selected GIF
         </button>
       </div>
       {progress > 0 && progress < 1 && (
@@ -88,6 +227,16 @@ export function ImagePanel({ controller }: { controller: DeviceController }) {
       {status && <p>{status}</p>}
     </section>
   );
+}
+
+// Compact per-frame delay summary: lists them if few, else min/avg/max.
+function summarizeDelays(delaysMs: readonly number[]): string {
+  if (delaysMs.length === 0) return "—";
+  if (delaysMs.length <= 6) return delaysMs.join(", ");
+  const min = Math.min(...delaysMs);
+  const max = Math.max(...delaysMs);
+  const avg = Math.round(delaysMs.reduce((a, b) => a + b, 0) / delaysMs.length);
+  return `${delaysMs.length} frames, min ${min} / avg ${avg} / max ${max}`;
 }
 
 function drawPreview(canvas: HTMLCanvasElement | null, rgb565: Uint8Array) {

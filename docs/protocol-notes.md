@@ -9,6 +9,31 @@ source repositories. Where source disagrees with source, the disagreement is
 documented in the cross-check section so downstream tasks can decide which
 variant to implement and test against real hardware.
 
+## Hardware verification (revision PID 0x800A)
+
+The protocol below is derived from the three reference implementations. The
+following items were **additionally verified directly over WebHID** on a
+physical Ajazz AK820 Pro that enumerates as USB product `AK820`, VID `0x0C45`,
+**PID `0x800A`** (a newer revision than the `0x8009` the references target),
+running on macOS + Chromium:
+
+- Vendor interfaces present and openable: control usage page **`0xFF13`**
+  (64-byte reports, report ID 0) and data usage page **`0xFF68`** (declared
+  **4096-byte** output report, report ID 0). This matches the `CHUNK_SIZE`
+  and `PACKET_LENGTH` used below.
+- Time sync (`START → TIME_PREAMBLE → TIME_DATA → SAVE 0x02`) accepted; the TFT
+  clock updated. The GET-feature handshake returns 64 bytes on this unit.
+- Static image: `IMAGE_CFG` sub `0x02`, 9×4096-byte chunks, per-chunk ACK,
+  `FINISH 0xF0`. Per-chunk ACK observed as `01 5A 02 00 00 00 00 00 …`. Image
+  displayed and persisted across a power-cycle.
+- Animated image: 256-byte frame header, `IMAGE_CFG` sub `0x03`, 4096-byte
+  chunks, per-chunk ACK, `SAVE 0x02` (no FINISH). A real 18-frame GIF (145
+  chunks) displayed and persisted across a power-cycle.
+
+Everything **not** in the list above remains reference-derived and is not
+independently confirmed on this revision. Behaviour on other PIDs/revisions is
+untested.
+
 ## Sources
 
 - **gohv/EPOMAKER-Ajazz-AK820-Pro** (Rust) — `git HEAD = 156be82` — primary

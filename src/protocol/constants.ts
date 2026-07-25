@@ -6,10 +6,18 @@ export const AJAZZ_VENDOR_ID = 0x0c45;
 /**
  * Known Product IDs that the AK820 Pro may present as.
  * 0x8009 — wired USB, confirmed across all three reference repos.
+ * 0x800A — wired USB on a newer AK820 Pro hardware/firmware revision. Reported
+ *          by a user whose keyboard enumerates as VID 0x0C45 / PID 0x800A,
+ *          Product Name "AK820", Manufacturer "SONiX", and exposes the same
+ *          vendor HID interfaces (usage pages 0xFF13 + 0xFF68) as 0x8009.
+ *          Added ONLY to let the device pass Chrome's requestDevice picker;
+ *          this constant is never used in protocol byte construction, so it
+ *          cannot change any command sent to the keyboard. Protocol
+ *          compatibility for 0x800A is still unverified — see docs/protocol-notes.md.
  * 0xFEFE — 2.4 GHz dongle PID for the sibling AKS075; unverified for AK820 Pro,
  *          included so dongle mode users have a chance of being matched.
  */
-export const AK820_PRO_PRODUCT_IDS: readonly number[] = [0x8009, 0xfefe] as const;
+export const AK820_PRO_PRODUCT_IDS: readonly number[] = [0x8009, 0x800a, 0xfefe] as const;
 
 /** TFT screen dimensions. */
 export const SCREEN_WIDTH = 128;

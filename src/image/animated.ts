@@ -1,10 +1,14 @@
 import { parseGIF, decompressFrames } from "gifuct-js";
 import { rgb888ToRgb565 } from "./rgb565";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../protocol/constants";
+import type { ResizeMode } from "./static";
 
 export type AnimatedImage = {
   frames: Uint8Array[];
   delaysMs: number[];
+  sourceWidth: number;
+  sourceHeight: number;
+  mode: ResizeMode;
 };
 
 export type DecodedGifFrame = {
@@ -101,22 +105,29 @@ function fillRect(
 }
 
 /**
- * Nearest-neighbour cover-crop resize from source RGBA buffer to
- * SCREEN_WIDTH x SCREEN_HEIGHT RGBA buffer.
+ * Nearest-neighbour resize from a source RGBA buffer to SCREEN_WIDTH ×
+ * SCREEN_HEIGHT RGBA, preserving aspect ratio.
  *
- * This avoids canvas-to-canvas drawImage, which is broken in the
- * jsdom + node-canvas test environment (node-canvas drawImage only
- * accepts a real Canvas / Image, not the OffscreenCanvas polyfill).
+ *  - "cover":   scale to fill, center-crop the overflow (clamp to edge).
+ *  - "contain": scale to fit entirely, black letterbox bars fill the rest.
+ *
+ * Neither mode stretches. This avoids canvas-to-canvas drawImage, which is
+ * broken in the jsdom + node-canvas test environment (node-canvas drawImage
+ * only accepts a real Canvas / Image, not the OffscreenCanvas polyfill).
  */
-function coverCropResize(
+function resizeRgba(
   src: Uint8ClampedArray,
   srcW: number,
   srcH: number,
+  mode: ResizeMode,
 ): Uint8ClampedArray {
   const dstW = SCREEN_WIDTH;
   const dstH = SCREEN_HEIGHT;
 
-  const scale = Math.max(dstW / srcW, dstH / srcH);
+  const scale =
+    mode === "cover"
+      ? Math.max(dstW / srcW, dstH / srcH)
+      : Math.min(dstW / srcW, dstH / srcH);
   const scaledW = srcW * scale;
   const scaledH = srcH * scale;
   const offX = (dstW - scaledW) / 2;
@@ -126,12 +137,18 @@ function coverCropResize(
 
   for (let dy = 0; dy < dstH; dy++) {
     for (let dx = 0; dx < dstW; dx++) {
+      const dstIdx = (dy * dstW + dx) * 4;
       const sx = Math.round((dx - offX) / scale);
       const sy = Math.round((dy - offY) / scale);
+
+      if (mode === "contain" && (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH)) {
+        // Letterbox bar: opaque black.
+        dst[dstIdx + 3] = 255;
+        continue;
+      }
       const cx = Math.max(0, Math.min(srcW - 1, sx));
       const cy = Math.max(0, Math.min(srcH - 1, sy));
       const srcIdx = (cy * srcW + cx) * 4;
-      const dstIdx = (dy * dstW + dx) * 4;
       dst[dstIdx] = src[srcIdx];
       dst[dstIdx + 1] = src[srcIdx + 1];
       dst[dstIdx + 2] = src[srcIdx + 2];
@@ -148,10 +165,15 @@ function coverCropResize(
 // freed once we start streaming.
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_GIF_DIMENSION = 2048;
-const MAX_GIF_FRAMES = 256;
+// Conservative first-test cap: the AK820 Pro animated protocol tolerates more,
+// but small/short GIFs keep the first real uploads safe and quick to verify.
+const MAX_GIF_FRAMES = 20;
 const MAX_PATCH_PIXELS = 50_000_000;
 
-export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
+export async function processAnimatedImage(
+  file: File,
+  mode: ResizeMode = "cover",
+): Promise<AnimatedImage> {
   if (file.type !== "image/gif") {
     throw new Error(`processAnimatedImage: expected image/gif, got ${file.type}`);
   }
@@ -220,10 +242,16 @@ export async function processAnimatedImage(file: File): Promise<AnimatedImage> {
   const delaysMs: number[] = [];
 
   for (const { rgba, delayMs } of composed) {
-    const resized = coverCropResize(rgba, gif.lsd.width, gif.lsd.height);
+    const resized = resizeRgba(rgba, gif.lsd.width, gif.lsd.height, mode);
     frames.push(rgb888ToRgb565(resized, SCREEN_WIDTH, SCREEN_HEIGHT, "le"));
     delaysMs.push(delayMs);
   }
 
-  return { frames, delaysMs };
+  return {
+    frames,
+    delaysMs,
+    sourceWidth: gif.lsd.width,
+    sourceHeight: gif.lsd.height,
+    mode,
+  };
 }

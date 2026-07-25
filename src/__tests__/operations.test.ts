@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { MockDeviceController } from "../device/mock-controller";
 import { syncTime, uploadStaticImage, uploadAnimatedImage } from "../operations";
 import { RGB565_FRAME_BYTES } from "../protocol/constants";
+import { generateTwoFrameAnimation } from "../image/test-pattern";
+import { buildFrameHeader, buildAnimatedDataChunks } from "../protocol/image";
 
 describe("syncTime", () => {
   test("sends exactly 4 feature reports (START, TIME_PREAMBLE, TIME_DATA, SAVE)", async () => {
@@ -63,6 +65,19 @@ describe("uploadStaticImage", () => {
       uploadStaticImage(ctrl, new Uint8Array(100), () => {}),
     ).rejects.toThrow(/32768/);
   });
+
+  test("fail-fast: a missing ACK aborts — no further chunk, no FINISH", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+    ctrl.waitForDataInputReport = async () => null; // force ACK timeout
+    await expect(
+      uploadStaticImage(ctrl, new Uint8Array(RGB565_FRAME_BYTES), () => {}),
+    ).rejects.toThrow(/aborted/i);
+    // START + CFG were sent, then exactly ONE chunk, then abort.
+    expect(ctrl.sent.filter((s) => s.kind === "output")).toHaveLength(1);
+    // No FINISH (0xF0) was ever sent.
+    expect(ctrl.sent.some((s) => s.kind === "feature" && s.bytes[0] === 0xf0)).toBe(false);
+  });
 });
 
 describe("uploadAnimatedImage (AKS075 path)", () => {
@@ -97,5 +112,58 @@ describe("uploadAnimatedImage (AKS075 path)", () => {
     await expect(
       uploadAnimatedImage(ctrl, frames, [100, 200], () => {}),
     ).rejects.toThrow(/delay/i);
+  });
+
+  test("fail-fast: a missing ACK aborts — no further chunk, no SAVE", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+    ctrl.waitForDataInputReport = async () => null; // force ACK timeout
+    const frames = [new Uint8Array(RGB565_FRAME_BYTES), new Uint8Array(RGB565_FRAME_BYTES)];
+    await expect(
+      uploadAnimatedImage(ctrl, frames, [100, 100], () => {}),
+    ).rejects.toThrow(/aborted/i);
+    // Exactly one chunk was sent before the abort.
+    expect(ctrl.sent.filter((s) => s.kind === "output")).toHaveLength(1);
+    // No SAVE (0x02) and no FINISH (0xF0) were sent.
+    expect(ctrl.sent.some((s) => s.kind === "feature" && s.bytes[0] === 0x02)).toBe(false);
+    expect(ctrl.sent.some((s) => s.bytes[0] === 0xf0)).toBe(false);
+  });
+});
+
+describe("SAFE 2-frame animation (black + white, 200 ms)", () => {
+  test("payload/header/chunk math matches expected values", () => {
+    const { frames, delaysMs } = generateTwoFrameAnimation();
+    expect(frames).toHaveLength(2);
+    expect(delaysMs).toEqual([200, 200]);
+    expect(frames[0].byteLength).toBe(32768);
+
+    // Header: 02 64 64 FF FF ... (frame count 2, two delays of 0x64).
+    const header = buildFrameHeader(frames.length, delaysMs);
+    expect(header.length).toBe(256);
+    expect(Array.from(header.subarray(0, 4))).toEqual([0x02, 0x64, 0x64, 0xff]);
+
+    // 256 + 2*32768 = 65792 → padded to 17 * 4096 = 69632, all chunks 4096.
+    const chunks = buildAnimatedDataChunks(frames, delaysMs);
+    expect(chunks).toHaveLength(17);
+    expect(chunks.every((c) => c.byteLength === 4096)).toBe(true);
+    expect(chunks.reduce((a, c) => a + c.byteLength, 0)).toBe(69632);
+  });
+
+  test("upload sends START(enable=false)+CFG(sub=0x03,count=17)+17 chunks+SAVE(0x02), no FINISH", async () => {
+    const ctrl = new MockDeviceController();
+    await ctrl.connect();
+    const { frames, delaysMs } = generateTwoFrameAnimation();
+
+    await uploadAnimatedImage(ctrl, frames, delaysMs, () => {});
+
+    expect(ctrl.sent).toHaveLength(20); // START + CFG + 17 chunks + SAVE
+    expect(ctrl.sent[0].bytes[0]).toBe(0x18); // START
+    expect(ctrl.sent[0].bytes[7]).toBe(0x00); // enable=false
+    expect(ctrl.sent[1].bytes[0]).toBe(0x72); // IMAGE_CFG
+    expect(ctrl.sent[1].bytes[1]).toBe(0x03); // animated sub-command
+    expect(ctrl.sent[1].bytes[7]).toBe(17); // chunk count low byte
+    expect(ctrl.sent.filter((s) => s.kind === "output")).toHaveLength(17);
+    expect(ctrl.sent[19].bytes[0]).toBe(0x02); // SAVE
+    expect(ctrl.sent.some((s) => s.bytes[0] === 0xf0)).toBe(false); // no FINISH
   });
 });
