@@ -14,10 +14,12 @@ describe("ImagePanel", () => {
     expect(input.disabled).toBe(true);
   });
 
-  test("upload button is disabled when no file is prepared", () => {
+  test("upload buttons are disabled when nothing is prepared", () => {
     const ctrl = new MockDeviceController();
     const { getByRole } = render(<ImagePanel controller={ctrl} />);
-    const btn = getByRole("button", { name: /upload/i }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    const img = getByRole("button", { name: /upload selected image/i }) as HTMLButtonElement;
+    const gif = getByRole("button", { name: /upload selected gif/i }) as HTMLButtonElement;
+    expect(img.disabled).toBe(true);
+    expect(gif.disabled).toBe(true);
   });
 });
