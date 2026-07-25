@@ -21,6 +21,12 @@ describe("protocol constants", () => {
     expect(AK820_PRO_PRODUCT_IDS.length).toBeGreaterThan(0);
   });
 
+  test("product IDs includes the 0x800A revision (hardware-verified)", () => {
+    // The newer AK820 Pro revision enumerates as PID 0x800A; it must be in the
+    // requestDevice whitelist so Chrome's picker offers it.
+    expect(AK820_PRO_PRODUCT_IDS).toContain(0x800a);
+  });
+
   test("screen is 128x128", () => {
     expect(SCREEN_WIDTH).toBe(128);
     expect(SCREEN_HEIGHT).toBe(128);
